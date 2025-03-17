@@ -48,9 +48,9 @@ const bunAdapter: Adapter<BunAdapter, BunOptions> = (options = {}) => {
         headers:
           upgradeHeaders instanceof Headers
             ? upgradeHeaders
-            : (upgradeHeaders
+            : upgradeHeaders
               ? new Headers(upgradeHeaders)
-              : undefined),
+              : undefined,
       });
 
       if (!upgradeOK) {
