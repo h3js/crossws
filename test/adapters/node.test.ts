@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe } from "vitest";
+import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { createServer, Server } from "node:http";
 import { getRandomPort, waitForPort } from "get-port-please";
 import nodeAdapter from "../../src/adapters/node";
@@ -44,5 +44,12 @@ describe("node", () => {
 
   wsTests(() => url, {
     adapter: "node",
+  });
+
+  test("forcefully terminates when force=true", async () => {
+    ws.closeAll(undefined, undefined, true);
+    for (const { websocket } of ws.peers) {
+      expect(websocket.readyState).toBe(WebSocket.CLOSING);
+    }
   });
 });
