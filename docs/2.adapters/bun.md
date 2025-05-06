@@ -33,5 +33,5 @@ Bun.serve({
 ```
 
 ::read-more
-See [`test/fixture/bun.ts`](https://github.com/unjs/crossws/blob/main/test/fixture/bun.ts) for demo and [`src/adapters/bun.ts`](https://github.com/unjs/crossws/blob/main/src/adapters/bun.ts) for implementation.
+See [`test/fixture/bun.ts`](https://github.com/h3js/crossws/blob/main/test/fixture/bun.ts) for demo and [`src/adapters/bun.ts`](https://github.com/h3js/crossws/blob/main/src/adapters/bun.ts) for implementation.
 ::

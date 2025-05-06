@@ -85,5 +85,5 @@ ws.addEventListener("message", (event) => {
 > In theory, it is possible to have communication on a single HTTP/2 connection, however, due to a [current limitation in fetch standard](https://github.com/whatwg/fetch/issues/1254) we need 2 connections, one for receiving messages and one for sending.
 
 ::read-more
-See [`test/fixture/sse.ts`](https://github.com/unjs/crossws/blob/main/test/fixture/sse.ts) for demo and [`src/adapters/sse.ts`](https://github.com/unjs/crossws/blob/main/src/adapters/sse.ts) for implementation.
+See [`test/fixture/sse.ts`](https://github.com/h3js/crossws/blob/main/test/fixture/sse.ts) for demo and [`src/adapters/sse.ts`](https://github.com/h3js/crossws/blob/main/src/adapters/sse.ts) for implementation.
 ::

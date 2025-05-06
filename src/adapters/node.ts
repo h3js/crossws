@@ -29,7 +29,7 @@ export interface NodeAdapter extends AdapterInstance {
     socket: Duplex,
     head: Buffer,
   ): Promise<void>;
-  closeAll: (code?: number, data?: string | Buffer) => void;
+  closeAll: (code?: number, data?: string | Buffer, force?: boolean) => void;
 }
 
 export interface NodeOptions extends AdapterOptions {
@@ -104,9 +104,13 @@ const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
         wss.emit("connection", ws, nodeReq);
       });
     },
-    closeAll: (code, data) => {
+    closeAll: (code, data, force) => {
       for (const client of wss.clients) {
-        client.close(code, data);
+        if (force) {
+          client.terminate();
+        } else {
+          client.close(code, data);
+        }
       }
     },
   };
@@ -215,6 +219,9 @@ async function sendResponse(socket: Duplex, res: Response) {
     }
   }
   return new Promise<void>((resolve) => {
-    socket.end(resolve);
+    socket.end(() => {
+      socket.destroy();
+      resolve();
+    });
   });
 }

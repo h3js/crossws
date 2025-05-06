@@ -118,7 +118,7 @@ export class WebSocketSSE extends _EventTarget implements web.WebSocket {
 
     this.#sse.addEventListener("close", (_sseEvent) => {
       this.readyState = WebSocketSSE.CLOSED;
-      const event = new Event("close") as web.CloseEvent;
+      const event = new Event("close") as unknown as web.CloseEvent;
       this.onclose?.(event);
       this.dispatchEvent(event);
     });
