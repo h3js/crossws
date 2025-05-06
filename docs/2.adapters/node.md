@@ -32,7 +32,7 @@ server.on("upgrade", (req, socket, head) => {
 ```
 
 ::read-more
-See [`test/fixture/node.ts`](https://github.com/unjs/crossws/blob/main/test/fixture/node.ts) for demo and [`src/adapters/node.ts`](https://github.com/unjs/crossws/blob/main/src/adapters/node.ts) for implementation.
+See [`test/fixture/node.ts`](https://github.com/h3js/crossws/blob/main/test/fixture/node.ts) for demo and [`src/adapters/node.ts`](https://github.com/h3js/crossws/blob/main/src/adapters/node.ts) for implementation.
 ::
 
 ## uWebSockets
@@ -66,5 +66,5 @@ server.listen(3001, () => {
 ```
 
 ::read-more
-See [`test/fixture/node-uws.ts`](https://github.com/unjs/crossws/blob/main/test/fixture/node-uws.ts) for demo and [`src/adapters/node-uws.ts`](https://github.com/unjs/crossws/blob/main/src/adapters/node-uws.ts) for implementation.
+See [`test/fixture/node-uws.ts`](https://github.com/h3js/crossws/blob/main/test/fixture/node-uws.ts) for demo and [`src/adapters/node-uws.ts`](https://github.com/h3js/crossws/blob/main/src/adapters/node-uws.ts) for implementation.
 ::

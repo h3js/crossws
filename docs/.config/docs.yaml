@@ -3,16 +3,16 @@
 name: crossws
 shortDescription: Unified WebSocket Servers
 description: elegant, typed, and simple toolkit to implement cross-platform WebSocket servers.
-github: unjs/crossws
+github: h3js/crossws
 landing:
   heroLinks:
     playOnline:
       label: Play Online
       icon: i-heroicons-play
-      to: https://stackblitz.com/github/unjs/crossws/tree/main/examples/h3?file=app.ts
+      to: https://stackblitz.com/github/h3js/crossws/tree/main/examples/h3?file=app.ts
   features:
     - title: 🧩 Pluggable
-      description: Seamlessly integrates with [Bun](https://crossws.unjs.io/adapters/bun), [Cloudflare Workers](https://crossws.unjs.io/adapters/cloudflare), [Deno](https://crossws.unjs.io/adapters/deno) and [Node.js](https://crossws.unjs.io/adapters/node) and any compatible web framework.
+      description: Seamlessly integrates with [Bun](https://crossws.h3.dev/adapters/bun), [Cloudflare Workers](https://crossws.h3.dev/adapters/cloudflare), [Deno](https://crossws.h3.dev/adapters/deno) and [Node.js](https://crossws.h3.dev/adapters/node) and any compatible web framework.
     - title: 📦 Lightweight
       description: Extremely lightweight and tree-shakable conditional ESM exports. Prebundled with [ws](https://github.com/websockets/ws) for Node.js support.
     - title: 🚀 Made for Performance

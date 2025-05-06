@@ -4,7 +4,7 @@ import { defineHooks } from "crossws";
 export const app = createApp();
 
 // Listhen automatically sets up integration!
-// Learn more: https://crossws.unjs.io
+// Learn more: https://crossws.h3.dev
 
 export const websocket = {
   hooks: defineHooks({

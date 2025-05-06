@@ -9,13 +9,13 @@
 
 Elegant, typed, and simple toolkit to implement cross-platform WebSocket servers.
 
-👉 [📖 documentation](https://crossws.unjs.io)
+👉 [📖 documentation](https://crossws.h3.dev)
 
 ## Features
 
-🧩 Seamlessly integrates with [Bun](https://crossws.unjs.io/adapters/bun), [Cloudflare Workers](https://crossws.unjs.io/adapters/cloudflare), [Deno](https://crossws.unjs.io/adapters/deno) and [Node.js](https://crossws.unjs.io/adapters/node) and any compatible web framework.
+🧩 Seamlessly integrates with [Bun](https://crossws.h3.dev/adapters/bun), [Cloudflare Workers](https://crossws.h3.dev/adapters/cloudflare), [Deno](https://crossws.h3.dev/adapters/deno) and [Node.js](https://crossws.h3.dev/adapters/node) and any compatible web framework.
 
-✅ Prebundled with [ws](https://github.com/websockets/ws) for Node.js support with alternative/much faster [uWebSockets](https://crossws.unjs.io/adapters/node#uwebsockets) adapter.
+✅ Prebundled with [ws](https://github.com/websockets/ws) for Node.js support with alternative/much faster [uWebSockets](https://crossws.h3.dev/adapters/node#uwebsockets) adapter.
 
 📦 Extremely lightweight and tree-shakable conditional ESM exports.
 
@@ -44,11 +44,11 @@ Elegant, typed, and simple toolkit to implement cross-platform WebSocket servers
 
 <!-- automd:contributors license=MIT author="pi0" -->
 
-Published under the [MIT](https://github.com/unjs/crossws/blob/main/LICENSE) license.
-Made by [@pi0](https://github.com/pi0) and [community](https://github.com/unjs/crossws/graphs/contributors) 💛
+Published under the [MIT](https://github.com/h3js/crossws/blob/main/LICENSE) license.
+Made by [@pi0](https://github.com/pi0) and [community](https://github.com/h3js/crossws/graphs/contributors) 💛
 <br><br>
-<a href="https://github.com/unjs/crossws/graphs/contributors">
-<img src="https://contrib.rocks/image?repo=unjs/crossws" />
+<a href="https://github.com/h3js/crossws/graphs/contributors">
+<img src="https://contrib.rocks/image?repo=h3js/crossws" />
 </a>
 
 <!-- /automd -->

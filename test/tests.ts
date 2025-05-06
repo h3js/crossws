@@ -107,9 +107,9 @@ export function wsTests(getURL: () => string, opts: WSTestOpts): void {
     expect(websocket).toMatchObject({
       readyState: 1,
       protocol: /ss/.test(opts.adapter) ? "" : "crossws",
-      extensions: /sse|cloudflare/.test(opts.adapter)
+      extensions: /sse/.test(opts.adapter)
         ? ""
-        : "permessage-deflate; client_max_window_bits",
+        : /^permessage-deflate; client_max_window_bits/,
       url: getURL() + "?foo=bar",
     });
   });
