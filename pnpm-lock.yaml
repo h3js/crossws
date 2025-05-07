@@ -10,10 +10,6 @@ overrides:
 importers:
 
   .:
-    dependencies:
-      uncrypto:
-        specifier: ^0.1.3
-        version: 0.1.3
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^4.20250506.0

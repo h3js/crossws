@@ -1,5 +1,4 @@
 import type * as web from "../types/web.ts";
-import { randomUUID } from "uncrypto";
 import type { UpgradeRequest } from "./hooks.ts";
 import { kNodeInspect } from "./utils.ts";
 
@@ -31,7 +30,7 @@ export abstract class Peer<Internal extends AdapterInternal = AdapterInternal> {
    */
   get id(): string {
     if (!this._id) {
-      this._id = randomUUID();
+      this._id = crypto.randomUUID();
     }
     return this._id;
   }
