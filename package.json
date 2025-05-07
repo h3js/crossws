@@ -84,9 +84,6 @@
   "resolutions": {
     "crossws": "workspace:*"
   },
-  "dependencies": {
-    "uncrypto": "^0.1.3"
-  },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250506.0",
     "@types/bun": "^1.2.12",
