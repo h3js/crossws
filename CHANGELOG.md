@@ -1,5 +1,41 @@
 # Changelog
 
+## v0.3.5
+
+[compare changes](https://github.com/h3js/crossws/compare/v0.3.4...v0.3.5)
+
+### 🚀 Enhancements
+
+- **node:** Support `closeAll` with `force` flag ([#147](https://github.com/h3js/crossws/pull/147))
+
+### 🩹 Fixes
+
+- **node:** Destroy socket on upgrade abort ([#140](https://github.com/h3js/crossws/pull/140))
+
+### 📦 Build
+
+- Export `AdapterInternal` type ([#149](https://github.com/h3js/crossws/pull/149))
+
+### 🌊 Types
+
+- Mark `NodeAdapter.handleUpgrade` as async ([#136](https://github.com/h3js/crossws/pull/136))
+
+### 🏡 Chore
+
+- Unused import ([39485dc](https://github.com/h3js/crossws/commit/39485dc))
+- Update deps ([c0b6db5](https://github.com/h3js/crossws/commit/c0b6db5))
+- Use pnpm for docs ([e631333](https://github.com/h3js/crossws/commit/e631333))
+- Move to h3js org ([3747c75](https://github.com/h3js/crossws/commit/3747c75))
+- Update cloudflare test ([12fef5f](https://github.com/h3js/crossws/commit/12fef5f))
+- Update deps ([3e27973](https://github.com/h3js/crossws/commit/3e27973))
+
+### ❤️ Contributors
+
+- Pooya Parsa ([@pi0](https://github.com/pi0))
+- M1212e ([@m1212e](https://github.com/m1212e))
+- Tee Ming ([@eltigerchino](https://github.com/eltigerchino))
+- James Garbutt ([@43081j](https://github.com/43081j))
+
 ## v0.3.4
 
 [compare changes](https://github.com/h3js/crossws/compare/v0.3.3...v0.3.4)
