@@ -176,7 +176,6 @@ class NodePeer extends Peer<{
 // --- web compat ---
 
 class NodeReqProxy extends StubRequest {
-  _req: IncomingMessage;
   constructor(req: IncomingMessage) {
     const host = req.headers["host"] || "localhost";
     const isSecure =
@@ -184,7 +183,6 @@ class NodeReqProxy extends StubRequest {
       req.headers["x-forwarded-proto"] === "https";
     const url = `${isSecure ? "https" : "http"}://${host}${req.url}`;
     super(url, { headers: req.headers as Record<string, string> });
-    this._req = req;
   }
 }
 
