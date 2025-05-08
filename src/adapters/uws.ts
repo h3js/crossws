@@ -210,9 +210,6 @@ class UWSPeer extends Peer<{
 // --- web compat ---
 
 class UWSReqProxy extends StubRequest {
-  private _headers?: Headers;
-  private _rawHeaders: [string, string][] = [];
-
   constructor(req: uws.HttpRequest) {
     const rawHeaders: [string, string][] = [];
 
@@ -226,7 +223,7 @@ class UWSReqProxy extends StubRequest {
       } else if (key === "x-forwarded-proto" && value === "https") {
         proto = "https";
       }
-      this._rawHeaders.push([key, value]);
+      rawHeaders.push([key, value]);
     });
 
     const query = req.getQuery();
