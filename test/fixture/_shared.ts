@@ -73,11 +73,15 @@ export function createDemo<T extends Adapter<any, any>>(
         };
       }
       req.context.test = "1";
+      const headers: Record<string, string> = {
+        "x-powered-by": "cross-ws",
+        "set-cookie": "cross-ws=1; SameSite=None; Secure",
+      };
+      if (req.headers.get("sec-websocket-protocol") === "supported") {
+        headers["sec-websocket-protocol"] = "supported";
+      }
       return {
-        headers: {
-          "x-powered-by": "cross-ws",
-          "set-cookie": "cross-ws=1; SameSite=None; Secure",
-        },
+        headers,
       };
     },
   });

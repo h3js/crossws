@@ -35,10 +35,12 @@ const denoAdapter: Adapter<DenoAdapter, DenoOptions> = (options = {}) => {
       if (endResponse) {
         return endResponse;
       }
-
+      // prettier-ignore
+      const headers = upgradeHeaders instanceof Headers ? upgradeHeaders : new Headers(upgradeHeaders);
       const upgrade = Deno.upgradeWebSocket(request, {
         // @ts-expect-error https://github.com/denoland/deno/pull/22242
-        headers: upgradeHeaders,
+        headers,
+        protocol: headers.get("sec-websocket-protocol") ?? "",
       });
       const peer = new DenoPeer({
         ws: upgrade.socket,

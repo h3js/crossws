@@ -50,6 +50,7 @@ const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
     options.wss ||
     (new _WebSocketServer({
       noServer: true,
+      handleProtocols: () => false,
       ...(options.serverOptions as any),
     }) as WebSocketServer);
 
