@@ -7,6 +7,7 @@ import { adapterUtils } from "../adapter.ts";
 import { AdapterHookable } from "../hooks.ts";
 import { Message } from "../message.ts";
 import { Peer } from "../peer.ts";
+import { StubRequest } from "../_request.ts";
 
 type ResolveDurableStub = (
   req: CF.Request,
@@ -182,7 +183,8 @@ class CloudflareDurablePeer extends Peer<{
     const state = (ws.deserializeAttachment() || {}) as AttachedState;
     peer = ws._crosswsPeer = new CloudflareDurablePeer({
       ws: ws as CF.WebSocket,
-      request: (request as Request) || { url: state.u },
+      request:
+        (request as Request | undefined) || new StubRequest(state.u || ""),
       durable: durable as DurableObjectPub,
     });
     if (state.i) {

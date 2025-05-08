@@ -1,10 +1,9 @@
 import type * as web from "../types/web.ts";
-import type { UpgradeRequest } from "./hooks.ts";
 import { kNodeInspect } from "./utils.ts";
 
 export interface AdapterInternal {
   ws: unknown;
-  request: UpgradeRequest;
+  request: Request;
   peers?: Set<Peer>;
   context?: Peer["context"];
 }
@@ -41,7 +40,7 @@ export abstract class Peer<Internal extends AdapterInternal = AdapterInternal> {
   }
 
   /** upgrade request */
-  get request(): UpgradeRequest {
+  get request(): Request {
     return this._internal.request;
   }
 

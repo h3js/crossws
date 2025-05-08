@@ -6,6 +6,7 @@ import { adapterUtils } from "../adapter.ts";
 import { AdapterHookable } from "../hooks.ts";
 import { Message } from "../message.ts";
 import { Peer } from "../peer.ts";
+import { StubRequest } from "../_request.ts";
 
 // --- types ---
 
@@ -208,18 +209,18 @@ class UWSPeer extends Peer<{
 
 // --- web compat ---
 
-class UWSReqProxy {
+class UWSReqProxy extends StubRequest {
   private _headers?: Headers;
   private _rawHeaders: [string, string][] = [];
 
-  url: string;
+  constructor(req: uws.HttpRequest) {
+    const rawHeaders: [string, string][] = [];
 
-  constructor(_req: uws.HttpRequest) {
-    // Headers
     let host = "localhost";
     let proto = "http";
+
     // eslint-disable-next-line unicorn/no-array-for-each
-    _req.forEach((key, value) => {
+    req.forEach((key, value) => {
       if (key === "host") {
         host = value;
       } else if (key === "x-forwarded-proto" && value === "https") {
@@ -227,17 +228,12 @@ class UWSReqProxy {
       }
       this._rawHeaders.push([key, value]);
     });
-    // URL
-    const query = _req.getQuery();
-    const pathname = _req.getUrl();
-    this.url = `${proto}://${host}${pathname}${query ? `?${query}` : ""}`;
-  }
 
-  get headers(): Headers {
-    if (!this._headers) {
-      this._headers = new Headers(this._rawHeaders);
-    }
-    return this._headers;
+    const query = req.getQuery();
+    const pathname = req.getUrl();
+    const url = `${proto}://${host}${pathname}${query ? `?${query}` : ""}`;
+
+    super(url, { headers: rawHeaders });
   }
 }
 

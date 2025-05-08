@@ -41,7 +41,7 @@ export class AdapterHookable {
   }
 
   async upgrade(
-    request: UpgradeRequest & { readonly context?: Peer["context"] },
+    request: Request & { readonly context?: Peer["context"] },
   ): Promise<{
     upgradeHeaders?: HeadersInit;
     endResponse?: Response;
@@ -59,7 +59,7 @@ export class AdapterHookable {
     try {
       const res = await this.callHook(
         "upgrade",
-        request as UpgradeRequest & { context: Peer["context"] },
+        request as Request & { context: Peer["context"] },
       );
       if (!res) {
         return { context };
@@ -101,13 +101,6 @@ export type ResolveHooks = (
 
 export type MaybePromise<T> = T | Promise<T>;
 
-export type UpgradeRequest =
-  | Request
-  | {
-      url: string;
-      headers: Headers;
-    };
-
 export type UpgradeError = Response | { readonly response: Response };
 
 export interface Hooks {
@@ -118,7 +111,7 @@ export interface Hooks {
    * @throws {Response}
    */
   upgrade: (
-    request: UpgradeRequest & { context: Peer["context"] },
+    request: Request & { context: Peer["context"] },
   ) => MaybePromise<Response | ResponseInit | void>;
 
   /** A message is received */

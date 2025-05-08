@@ -14,11 +14,12 @@ import type {
   WebSocketServer,
   WebSocket as WebSocketT,
 } from "../../types/ws";
+import { StubRequest } from "../_request.ts";
 
 // --- types ---
 
 type AugmentedReq = IncomingMessage & {
-  _request: NodeReqProxy;
+  _request: Request;
   _upgradeHeaders?: HeadersInit;
   _context: Peer["context"];
 };
@@ -121,7 +122,7 @@ export default nodeAdapter;
 
 class NodePeer extends Peer<{
   peers: Set<NodePeer>;
-  request: NodeReqProxy;
+  request: Request;
   nodeReq: IncomingMessage;
   ws: WebSocketT & { _peer?: NodePeer };
 }> {
@@ -174,32 +175,16 @@ class NodePeer extends Peer<{
 
 // --- web compat ---
 
-class NodeReqProxy {
+class NodeReqProxy extends StubRequest {
   _req: IncomingMessage;
-  _headers?: Headers;
-  _url?: string;
-
   constructor(req: IncomingMessage) {
+    const host = req.headers["host"] || "localhost";
+    const isSecure =
+      (req.socket as any)?.encrypted ??
+      req.headers["x-forwarded-proto"] === "https";
+    const url = `${isSecure ? "https" : "http"}://${host}${req.url}`;
+    super(url, { headers: req.headers as Record<string, string> });
     this._req = req;
-  }
-
-  get url(): string {
-    if (!this._url) {
-      const req = this._req;
-      const host = req.headers["host"] || "localhost";
-      const isSecure =
-        (req.socket as any)?.encrypted ??
-        req.headers["x-forwarded-proto"] === "https";
-      this._url = `${isSecure ? "https" : "http"}://${host}${req.url}`;
-    }
-    return this._url;
-  }
-
-  get headers(): Headers {
-    if (!this._headers) {
-      this._headers = new Headers(this._req.headers as HeadersInit);
-    }
-    return this._headers;
   }
 }
 
