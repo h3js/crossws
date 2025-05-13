@@ -171,7 +171,7 @@ class UWSPeer extends Peer<{
     }
   }
 
-  override get context(): Record<string, unknown> {
+  override get context(): Peer["context"] {
     return this._internal.uwsData.context;
   }
 
