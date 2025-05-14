@@ -42,11 +42,11 @@ export class AdapterHookable {
   }
 
   async upgrade(
-    request: Request & { readonly context?: Record<string, unknown> },
+    request: Request & { readonly context?: Peer["context"] },
   ): Promise<{
     upgradeHeaders?: HeadersInit;
     endResponse?: Response;
-    context: Record<string, unknown>;
+    context: Peer["context"];
   }> {
     let context = request.context;
     if (!context) {
@@ -60,7 +60,7 @@ export class AdapterHookable {
     try {
       const res = await this.callHook(
         "upgrade",
-        request as Request & { context: Record<string, unknown> },
+        request as Request & { context?: Peer["context"] },
       );
       if (!res) {
         return { context };
@@ -105,15 +105,14 @@ export type MaybePromise<T> = T | Promise<T>;
 export type UpgradeError = Response | { readonly response: Response };
 
 export interface Hooks {
-  /** Upgrading */
   /**
-   *
+   * Upgrading a request to a WebSocket connection.
    * @param request
    * @throws {Response}
    */
   upgrade: (
     request: Request & {
-      readonly context?: Record<string, unknown>;
+      readonly context?: Peer["context"];
     },
   ) => MaybePromise<Response | ResponseInit | void>;
 
