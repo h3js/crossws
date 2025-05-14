@@ -10,7 +10,10 @@ export function plugin(wsOpts: WSOptions): ServerPlugin {
 
     server.options.middleware.unshift((req, next) => {
       if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
-        return ws._srvxUpgrade!(req);
+        return ws.handleUpgrade(
+          req,
+          req.runtime!.bun!.server,
+        ) as Promise<Response>;
       }
       return next();
     });

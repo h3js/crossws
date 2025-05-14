@@ -41,7 +41,6 @@
       "default": "./dist/adapters/uws.mjs"
     },
     "./server": {
-      "types": "./dist/server/_types.d.mts",
       "deno": "./dist/server/deno.mjs",
       "bun": "./dist/server/bun.mjs",
       "node": "./dist/server/node.mjs",
