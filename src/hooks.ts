@@ -42,11 +42,11 @@ export class AdapterHookable {
   }
 
   async upgrade(
-    request: Request & { readonly context?: Peer["context"] },
+    request: Request & { readonly context?: Record<string, unknown> },
   ): Promise<{
     upgradeHeaders?: HeadersInit;
     endResponse?: Response;
-    context: Peer["context"];
+    context: Record<string, unknown>;
   }> {
     let context = request.context;
     if (!context) {
@@ -60,7 +60,7 @@ export class AdapterHookable {
     try {
       const res = await this.callHook(
         "upgrade",
-        request as Request & { context: Peer["context"] },
+        request as Request & { context: Record<string, unknown> },
       );
       if (!res) {
         return { context };
@@ -112,7 +112,9 @@ export interface Hooks {
    * @throws {Response}
    */
   upgrade: (
-    request: Request & { context: Peer["context"] },
+    request: Request & {
+      context: { readonly context?: Record<string, unknown> };
+    },
   ) => MaybePromise<Response | ResponseInit | void>;
 
   /** A message is received */
