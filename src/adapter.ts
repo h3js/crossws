@@ -1,3 +1,4 @@
+import type { ServerRequest } from "srvx/types";
 import type { Hooks, ResolveHooks } from "./hooks.ts";
 import type { Peer } from "./peer.ts";
 
@@ -25,6 +26,8 @@ export function adapterUtils(peers: Set<Peer>): AdapterInstance {
 export interface AdapterInstance {
   readonly peers: Set<Peer>;
   readonly publish: Peer["publish"];
+  /** (experimental internal) */
+  readonly _srvxUpgrade?: (request: ServerRequest) => Promise<Response>;
 }
 
 export interface AdapterOptions {

@@ -68,6 +68,9 @@ importers:
       prettier:
         specifier: ^3.5.3
         version: 3.5.3
+      srvx:
+        specifier: ^0.7.1
+        version: 0.7.1
       typescript:
         specifier: ^5.8.3
         version: 5.8.3
@@ -101,6 +104,15 @@ importers:
       listhen:
         specifier: ^1.7.1
         version: 1.9.0
+
+  examples/srvx:
+    dependencies:
+      crossws:
+        specifier: workspace:*
+        version: link:../..
+      srvx:
+        specifier: latest
+        version: 0.6.0
 
 packages:
 
@@ -1573,6 +1585,9 @@ packages:
   cookie-es@1.2.2:
     resolution: {integrity: sha512-+W7VmiVINB+ywl1HGXJXmrqkOhpKrIiVZV6tQuV54ZyQC7MMuBt81Vc336GMLoHBq5hV/F9eXgt5Mnx0Rha5Fg==}
 
+  cookie-es@2.0.0:
+    resolution: {integrity: sha512-RAj4E421UYRgqokKUmotqAwuplYw15qtdXfY+hGzgCJ/MBjCVZcSoHK/kH9kocfjRjcDME7IiDWR/1WX1TM2Pg==}
+
   cookie-signature@1.2.2:
     resolution: {integrity: sha512-D76uU73ulSXrD1UXF4KE2TMxVVwhsnCgfAyTg9k8P6KGZjlXKrOLe4dJQKI3Bxi5wjesZoFXJWElNWBjPZMbhg==}
     engines: {node: '>=6.6.0'}
@@ -3002,6 +3017,14 @@ packages:
 
   spdx-license-ids@3.0.21:
     resolution: {integrity: sha512-Bvg/8F5XephndSK3JffaRqdT+gyhfqIPwDHpX80tJrF8QQRYMo8sNMeaZ2Dp5+jhwKnUmIOyFFQfHRkjJm5nXg==}
+
+  srvx@0.6.0:
+    resolution: {integrity: sha512-3tC4K2zIHWcnzcBQ47sTNKkUyrMYCNuoVj9IeAkGBeHeXD3ZRozNH88KBpJrB7lZmZjspk5kNPEugXnZ7KmvBw==}
+    engines: {node: '>=20.11.1'}
+
+  srvx@0.7.1:
+    resolution: {integrity: sha512-+Q5lVEj1UXrp4R0aq7io3dyeosU4Kn4627PA+ngf3Js1w/ZuOqXz7VfrflbdpCybYIZzNLFr7i12sAhEhN9WcA==}
+    engines: {node: '>=20.16.0'}
 
   stackback@0.0.2:
     resolution: {integrity: sha512-1XMJE5fQo1jGH6Y/7ebnwPOBEkIEnT4QF32d5R1+VXdXveM0IBMJt8zfaxX1P3QhVwrYe+576+jkANtSS2mBbw==}
@@ -4551,6 +4574,8 @@ snapshots:
   convert-gitmoji@0.1.5: {}
 
   cookie-es@1.2.2: {}
+
+  cookie-es@2.0.0: {}
 
   cookie-signature@1.2.2: {}
 
@@ -6173,6 +6198,14 @@ snapshots:
       spdx-license-ids: 3.0.21
 
   spdx-license-ids@3.0.21: {}
+
+  srvx@0.6.0:
+    dependencies:
+      cookie-es: 2.0.0
+
+  srvx@0.7.1:
+    dependencies:
+      cookie-es: 2.0.0
 
   stackback@0.0.2: {}
 

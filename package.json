@@ -40,6 +40,13 @@
       "types": "./dist/adapters/uws.d.mts",
       "default": "./dist/adapters/uws.mjs"
     },
+    "./server": {
+      "types": "./dist/server/_types.d.mts",
+      "deno": "./dist/server/deno.mjs",
+      "bun": "./dist/server/bun.mjs",
+      "node": "./dist/server/node.mjs",
+      "default": "./dist/server/default.mjs"
+    },
     "./websocket": {
       "types": "./dist/websocket/native.d.mts",
       "browser": "./dist/websocket/native.mjs",
@@ -104,6 +111,7 @@
     "jiti": "^2.4.2",
     "listhen": "^1.9.0",
     "prettier": "^3.5.3",
+    "srvx": "^0.7.1",
     "typescript": "^5.8.3",
     "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.44.0",
     "unbuild": "^3.5.0",
