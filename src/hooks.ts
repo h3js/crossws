@@ -20,7 +20,8 @@ export class AdapterHookable {
     const globalPromise = globalHook?.(arg1 as any, arg2 as any);
 
     // Resolve hooks for request
-    const resolveHooksPromise = this.options.resolve?.(arg1);
+    const request = (arg1 as Peer).request || arg1;
+    const resolveHooksPromise = this.options.resolve?.(request);
     if (!resolveHooksPromise) {
       return globalPromise as any; // Fast path: no hooks to resolve
     }
@@ -96,7 +97,7 @@ export function defineHooks<T extends Partial<Hooks> = Partial<Hooks>>(
 }
 
 export type ResolveHooks = (
-  info: RequestInit | Peer,
+  request: Request,
 ) => Partial<Hooks> | Promise<Partial<Hooks>>;
 
 export type MaybePromise<T> = T | Promise<T>;
