@@ -113,7 +113,7 @@ export interface Hooks {
    */
   upgrade: (
     request: Request & {
-      context: { readonly context?: Record<string, unknown> };
+      readonly context?: Record<string, unknown>;
     },
   ) => MaybePromise<Response | ResponseInit | void>;
 
