@@ -27,48 +27,43 @@ type ServeHandlerInfo = {
 const denoAdapter: Adapter<DenoAdapter, DenoOptions> = (options = {}) => {
   const hooks = new AdapterHookable(options);
   const peers = new Set<DenoPeer>();
-
-  const handleUpgrade = async (request: Request, info: ServeHandlerInfo) => {
-    const { upgradeHeaders, endResponse, context } =
-      await hooks.upgrade(request);
-    if (endResponse) {
-      return endResponse;
-    }
-
-    const upgrade = Deno.upgradeWebSocket(request, {
-      // @ts-expect-error https://github.com/denoland/deno/pull/22242
-      headers: upgradeHeaders,
-    });
-    const peer = new DenoPeer({
-      ws: upgrade.socket,
-      request,
-      peers,
-      denoInfo: info,
-      context,
-    });
-    peers.add(peer);
-    upgrade.socket.addEventListener("open", () => {
-      hooks.callHook("open", peer);
-    });
-    upgrade.socket.addEventListener("message", (event) => {
-      hooks.callHook("message", peer, new Message(event.data, peer, event));
-    });
-    upgrade.socket.addEventListener("close", () => {
-      peers.delete(peer);
-      hooks.callHook("close", peer, {});
-    });
-    upgrade.socket.addEventListener("error", (error) => {
-      peers.delete(peer);
-      hooks.callHook("error", peer, new WSError(error));
-    });
-    return upgrade.response;
-  };
-
   return {
     ...adapterUtils(peers),
-    handleUpgrade,
-    _srvxUpgrade: (request) =>
-      handleUpgrade(request, request.runtime!.deno!.info),
+    handleUpgrade: async (request, info) => {
+      const { upgradeHeaders, endResponse, context } =
+        await hooks.upgrade(request);
+      if (endResponse) {
+        return endResponse;
+      }
+
+      const upgrade = Deno.upgradeWebSocket(request, {
+        // @ts-expect-error https://github.com/denoland/deno/pull/22242
+        headers: upgradeHeaders,
+      });
+      const peer = new DenoPeer({
+        ws: upgrade.socket,
+        request,
+        peers,
+        denoInfo: info,
+        context,
+      });
+      peers.add(peer);
+      upgrade.socket.addEventListener("open", () => {
+        hooks.callHook("open", peer);
+      });
+      upgrade.socket.addEventListener("message", (event) => {
+        hooks.callHook("message", peer, new Message(event.data, peer, event));
+      });
+      upgrade.socket.addEventListener("close", () => {
+        peers.delete(peer);
+        hooks.callHook("close", peer, {});
+      });
+      upgrade.socket.addEventListener("error", (error) => {
+        peers.delete(peer);
+        hooks.callHook("error", peer, new WSError(error));
+      });
+      return upgrade.response;
+    },
   };
 };
 

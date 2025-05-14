@@ -86,37 +86,23 @@ const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
     }
   });
 
-  const handleUpgrade = async (
-    nodeReq: IncomingMessage,
-    socket: Duplex,
-    head: Buffer,
-  ) => {
-    const request = new NodeReqProxy(nodeReq);
-
-    const { upgradeHeaders, endResponse, context } =
-      await hooks.upgrade(request);
-    if (endResponse) {
-      return sendResponse(socket, endResponse);
-    }
-
-    (nodeReq as AugmentedReq)._request = request;
-    (nodeReq as AugmentedReq)._upgradeHeaders = upgradeHeaders;
-    (nodeReq as AugmentedReq)._context = context;
-    wss.handleUpgrade(nodeReq, socket, head, (ws) => {
-      wss.emit("connection", ws, nodeReq);
-    });
-  };
-
   return {
     ...adapterUtils(peers),
-    handleUpgrade,
-    _srvxUpgrade: (request) => {
-      const { req, upgrade } = request.runtime!.node!;
-      return handleUpgrade(
-        req as IncomingMessage,
-        upgrade!.socket,
-        upgrade!.header,
-      );
+    handleUpgrade: async (nodeReq, socket, head) => {
+      const request = new NodeReqProxy(nodeReq);
+
+      const { upgradeHeaders, endResponse, context } =
+        await hooks.upgrade(request);
+      if (endResponse) {
+        return sendResponse(socket, endResponse);
+      }
+
+      (nodeReq as AugmentedReq)._request = request;
+      (nodeReq as AugmentedReq)._upgradeHeaders = upgradeHeaders;
+      (nodeReq as AugmentedReq)._context = context;
+      wss.handleUpgrade(nodeReq, socket, head, (ws) => {
+        wss.emit("connection", ws, nodeReq);
+      });
     },
     closeAll: (code, data, force) => {
       for (const client of wss.clients) {

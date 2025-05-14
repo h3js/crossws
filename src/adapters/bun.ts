@@ -28,32 +28,27 @@ type ContextData = {
 const bunAdapter: Adapter<BunAdapter, BunOptions> = (options = {}) => {
   const hooks = new AdapterHookable(options);
   const peers = new Set<BunPeer>();
-
-  const handleUpgrade = async (request: Request, server: Server) => {
-    const { upgradeHeaders, endResponse, context } =
-      await hooks.upgrade(request);
-    if (endResponse) {
-      return endResponse;
-    }
-    const upgradeOK = server.upgrade(request, {
-      data: {
-        server,
-        request,
-        context,
-      } satisfies ContextData,
-      headers: upgradeHeaders,
-    });
-
-    if (!upgradeOK) {
-      return new Response("Upgrade failed", { status: 500 });
-    }
-  };
-
   return {
     ...adapterUtils(peers),
-    handleUpgrade,
-    _srvxUpgrade: (request) =>
-      handleUpgrade(request, request.runtime!.bun!.server) as Promise<Response>,
+    async handleUpgrade(request, server) {
+      const { upgradeHeaders, endResponse, context } =
+        await hooks.upgrade(request);
+      if (endResponse) {
+        return endResponse;
+      }
+      const upgradeOK = server.upgrade(request, {
+        data: {
+          server,
+          request,
+          context,
+        } satisfies ContextData,
+        headers: upgradeHeaders,
+      });
+
+      if (!upgradeOK) {
+        return new Response("Upgrade failed", { status: 500 });
+      }
+    },
     websocket: {
       message: (ws, message) => {
         const peer = getPeer(ws, peers);
