@@ -119,6 +119,14 @@
     "wrangler": "^4.14.1",
     "ws": "^8.18.2"
   },
+  "peerDependencies": {
+    "srvx": ">=0.7.1"
+  },
+  "peerDependenciesMeta": {
+    "srvx": {
+      "optional": true
+    }
+  },
   "packageManager": "pnpm@10.10.0",
   "pnpm": {
     "ignoredBuiltDependencies": [

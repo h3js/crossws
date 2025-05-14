@@ -10,4 +10,4 @@ dist
 
 /adapters
 /websocket
-websocket.d.ts
+/*.d.ts
