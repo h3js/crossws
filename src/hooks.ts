@@ -97,7 +97,7 @@ export function defineHooks<T extends Partial<Hooks> = Partial<Hooks>>(
 }
 
 export type ResolveHooks = (
-  request: Request,
+  request: Request & { readonly context?: Peer["context"] },
 ) => Partial<Hooks> | Promise<Partial<Hooks>>;
 
 export type MaybePromise<T> = T | Promise<T>;
