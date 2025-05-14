@@ -72,7 +72,7 @@ export function createDemo<T extends Adapter<any, any>>(
           },
         };
       }
-      req.context.test = "1";
+      req.context!.test = "1";
       return {
         headers: {
           "x-powered-by": "cross-ws",
