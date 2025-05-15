@@ -24,6 +24,8 @@ export default defineBuildConfig({
           ("..".repeat(entry.split("/").length - 1) || ".") + `/dist/${entry}`;
         if (entry === "websocket") {
           relativePath += "/native";
+        } else if (entry === "server") {
+          relativePath += "/node";
         }
         await writeFile(
           dst,
