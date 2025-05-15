@@ -6,7 +6,11 @@ import type { WSOptions, ServerWithWSOptions } from "./_types";
 
 export function plugin(wsOpts: WSOptions): ServerPlugin {
   return (server) => {
-    const ws = adapter({ hooks: wsOpts, ...wsOpts.options?.deno });
+    const ws = adapter({
+      hooks: wsOpts,
+      resolve: wsOpts.resolve,
+      ...wsOpts.options?.deno,
+    });
     // @ts-expect-error
     const originalServe = server.serve;
     // @ts-expect-error

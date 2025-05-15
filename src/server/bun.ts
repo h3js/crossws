@@ -6,7 +6,11 @@ import type { WSOptions, ServerWithWSOptions } from "./_types";
 
 export function plugin(wsOpts: WSOptions): ServerPlugin {
   return (server) => {
-    const ws = adapter({ hooks: wsOpts, ...wsOpts.options?.bun });
+    const ws = adapter({
+      hooks: wsOpts,
+      resolve: wsOpts.resolve,
+      ...wsOpts.options?.bun,
+    });
 
     server.options.middleware.unshift((req, next) => {
       if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {

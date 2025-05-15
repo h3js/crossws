@@ -1,4 +1,9 @@
-import type { Server, ServerPlugin, ServerOptions } from "srvx/types";
+import type {
+  Server,
+  ServerPlugin,
+  ServerOptions,
+  ServerRequest,
+} from "srvx/types";
 
 import type { Hooks } from "../hooks";
 
@@ -7,6 +12,7 @@ import type { DenoOptions } from "../adapters/deno";
 import type { NodeOptions } from "../adapters/node";
 
 export type WSOptions = Partial<Hooks> & {
+  resolve?: (req: ServerRequest) => Partial<Hooks> | Promise<Partial<Hooks>>;
   options?: {
     bun?: BunOptions;
     deno?: DenoOptions;
