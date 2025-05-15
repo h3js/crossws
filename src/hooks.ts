@@ -20,7 +20,8 @@ export class AdapterHookable {
     const globalPromise = globalHook?.(arg1 as any, arg2 as any);
 
     // Resolve hooks for request
-    const resolveHooksPromise = this.options.resolve?.(arg1);
+    const request = (arg1 as Peer).request || arg1;
+    const resolveHooksPromise = this.options.resolve?.(request);
     if (!resolveHooksPromise) {
       return globalPromise as any; // Fast path: no hooks to resolve
     }
@@ -59,7 +60,7 @@ export class AdapterHookable {
     try {
       const res = await this.callHook(
         "upgrade",
-        request as Request & { context: Peer["context"] },
+        request as Request & { context?: Peer["context"] },
       );
       if (!res) {
         return { context };
@@ -96,7 +97,7 @@ export function defineHooks<T extends Partial<Hooks> = Partial<Hooks>>(
 }
 
 export type ResolveHooks = (
-  info: RequestInit | Peer,
+  request: Request & { readonly context?: Peer["context"] },
 ) => Partial<Hooks> | Promise<Partial<Hooks>>;
 
 export type MaybePromise<T> = T | Promise<T>;
@@ -104,14 +105,15 @@ export type MaybePromise<T> = T | Promise<T>;
 export type UpgradeError = Response | { readonly response: Response };
 
 export interface Hooks {
-  /** Upgrading */
   /**
-   *
+   * Upgrading a request to a WebSocket connection.
    * @param request
    * @throws {Response}
    */
   upgrade: (
-    request: Request & { context: Peer["context"] },
+    request: Request & {
+      readonly context?: Peer["context"];
+    },
   ) => MaybePromise<Response | ResponseInit | void>;
 
   /** A message is received */

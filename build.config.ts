@@ -20,8 +20,11 @@ export default defineBuildConfig({
       for (const entry of entries) {
         const dst = join(ctx.options.rootDir, entry + ".d.ts");
         await mkdir(dirname(dst), { recursive: true });
-        const relativePath =
+        let relativePath =
           ("..".repeat(entry.split("/").length - 1) || ".") + `/dist/${entry}`;
+        if (entry === "websocket") {
+          relativePath += "/native";
+        }
         await writeFile(
           dst,
           `export * from "${relativePath}";\nexport { default } from "${relativePath}";\n`,
