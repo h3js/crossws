@@ -1,0 +1,14 @@
+{
+  "name": "crossws-examples-srvx",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "node": "node --watch ./index.mjs",
+    "bun": "bun run --watch ./index.mjs",
+    "deno": "deno run -A --watch ./index.mjs"
+  },
+  "dependencies": {
+    "crossws": "latest",
+    "srvx": "latest"
+  }
+}

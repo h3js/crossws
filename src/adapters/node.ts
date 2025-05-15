@@ -29,6 +29,7 @@ export interface NodeAdapter extends AdapterInstance {
     req: IncomingMessage,
     socket: Duplex,
     head: Buffer,
+    webRequest?: Request,
   ): Promise<void>;
   closeAll: (code?: number, data?: string | Buffer, force?: boolean) => void;
 }
@@ -88,8 +89,8 @@ const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
 
   return {
     ...adapterUtils(peers),
-    handleUpgrade: async (nodeReq, socket, head) => {
-      const request = new NodeReqProxy(nodeReq);
+    handleUpgrade: async (nodeReq, socket, head, webRequest) => {
+      const request = webRequest || new NodeReqProxy(nodeReq);
 
       const { upgradeHeaders, endResponse, context } =
         await hooks.upgrade(request);
