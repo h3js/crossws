@@ -1,6 +1,6 @@
 import type { AdapterOptions } from "./adapter.ts";
 import type { WSError } from "./error.ts";
-import type { Peer } from "./peer.ts";
+import type { Peer, PeerContext } from "./peer.ts";
 import type { Message } from "./message.ts";
 
 export class AdapterHookable {
@@ -42,11 +42,11 @@ export class AdapterHookable {
   }
 
   async upgrade(
-    request: Request & { readonly context?: Peer["context"] },
+    request: Request & { readonly context?: PeerContext },
   ): Promise<{
     upgradeHeaders?: HeadersInit;
     endResponse?: Response;
-    context: Peer["context"];
+    context: PeerContext;
   }> {
     let context = request.context;
     if (!context) {
@@ -60,7 +60,7 @@ export class AdapterHookable {
     try {
       const res = await this.callHook(
         "upgrade",
-        request as Request & { context?: Peer["context"] },
+        request as Request & { context?: PeerContext },
       );
       if (!res) {
         return { context };
@@ -97,7 +97,7 @@ export function defineHooks<T extends Partial<Hooks> = Partial<Hooks>>(
 }
 
 export type ResolveHooks = (
-  request: Request & { readonly context?: Peer["context"] },
+  request: Request & { readonly context?: PeerContext },
 ) => Partial<Hooks> | Promise<Partial<Hooks>>;
 
 export type MaybePromise<T> = T | Promise<T>;
@@ -112,7 +112,7 @@ export interface Hooks {
    */
   upgrade: (
     request: Request & {
-      readonly context?: Peer["context"];
+      readonly context?: PeerContext;
     },
   ) => MaybePromise<Response | ResponseInit | void>;
 

@@ -4,7 +4,7 @@ import { toString } from "../utils.ts";
 import { adapterUtils } from "../adapter.ts";
 import { AdapterHookable } from "../hooks.ts";
 import { Message } from "../message.ts";
-import { Peer } from "../peer.ts";
+import { Peer, type PeerContext } from "../peer.ts";
 
 // --- types ---
 
@@ -102,7 +102,7 @@ class SSEPeer extends Peer<{
   request: Request;
   ws: SSEWebSocketStub;
   hooks: AdapterHookable;
-  context: Peer["context"];
+  context: PeerContext;
 }> {
   _sseStream: ReadableStream; // server -> client
   _sseStreamController?: ReadableStreamDefaultController;

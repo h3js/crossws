@@ -5,7 +5,7 @@ import { toBufferLike } from "../utils.ts";
 import { adapterUtils } from "../adapter.ts";
 import { AdapterHookable } from "../hooks.ts";
 import { Message } from "../message.ts";
-import { Peer } from "../peer.ts";
+import { Peer, type PeerContext } from "../peer.ts";
 import { StubRequest } from "../_request.ts";
 
 // --- types ---
@@ -16,7 +16,7 @@ type UserData = {
   res: uws.HttpResponse;
   protocol: string;
   extensions: string;
-  context: Peer["context"];
+  context: PeerContext;
 };
 
 type WebSocketHandler = uws.WebSocketBehavior<UserData>;
@@ -171,7 +171,7 @@ class UWSPeer extends Peer<{
     }
   }
 
-  override get context(): Peer["context"] {
+  override get context(): PeerContext {
     return this._internal.uwsData.context;
   }
 

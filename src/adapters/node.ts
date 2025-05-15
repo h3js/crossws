@@ -4,7 +4,7 @@ import { adapterUtils } from "../adapter.ts";
 import { AdapterHookable } from "../hooks.ts";
 import { Message } from "../message.ts";
 import { WSError } from "../error.ts";
-import { Peer } from "../peer.ts";
+import { Peer, type PeerContext } from "../peer.ts";
 
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
@@ -21,7 +21,7 @@ import { StubRequest } from "../_request.ts";
 type AugmentedReq = IncomingMessage & {
   _request: Request;
   _upgradeHeaders?: HeadersInit;
-  _context: Peer["context"];
+  _context: PeerContext;
 };
 
 export interface NodeAdapter extends AdapterInstance {

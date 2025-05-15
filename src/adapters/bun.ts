@@ -4,7 +4,7 @@ import { toBufferLike } from "../utils.ts";
 import { adapterUtils } from "../adapter.ts";
 import { AdapterHookable } from "../hooks.ts";
 import { Message } from "../message.ts";
-import { Peer } from "../peer.ts";
+import { Peer, type PeerContext } from "../peer.ts";
 
 // --- types ---
 
@@ -19,7 +19,7 @@ type ContextData = {
   peer?: BunPeer;
   request: Request;
   server?: Server;
-  context: Peer["context"];
+  context: PeerContext;
 };
 
 // --- adapter ---
@@ -96,7 +96,7 @@ class BunPeer extends Peer<{
     return this._internal.ws.remoteAddress;
   }
 
-  override get context(): Peer["context"] {
+  override get context(): PeerContext {
     return this._internal.ws.data.context;
   }
 

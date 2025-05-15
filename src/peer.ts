@@ -7,7 +7,7 @@ export interface AdapterInternal {
   ws: unknown;
   request: Request;
   peers?: Set<Peer>;
-  context?: Peer["context"];
+  context?: PeerContext;
 }
 
 export abstract class Peer<Internal extends AdapterInternal = AdapterInternal> {

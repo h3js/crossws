@@ -4,7 +4,7 @@ import { adapterUtils } from "../adapter.ts";
 import { AdapterHookable } from "../hooks.ts";
 import { Message } from "../message.ts";
 import { WSError } from "../error.ts";
-import { Peer } from "../peer.ts";
+import { Peer, type PeerContext } from "../peer.ts";
 
 // --- types ---
 
@@ -76,7 +76,7 @@ class DenoPeer extends Peer<{
   request: Request;
   peers: Set<DenoPeer>;
   denoInfo: ServeHandlerInfo;
-  context: Peer["context"];
+  context: PeerContext;
 }> {
   override get remoteAddress() {
     return this._internal.denoInfo.remoteAddr?.hostname;

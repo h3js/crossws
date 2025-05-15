@@ -4,7 +4,7 @@ import { adapterUtils } from "../adapter.ts";
 import { AdapterHookable } from "../hooks.ts";
 import { Message } from "../message.ts";
 import { WSError } from "../error.ts";
-import { Peer } from "../peer.ts";
+import { Peer, type PeerContext } from "../peer.ts";
 
 import type * as _cf from "@cloudflare/workers-types";
 
@@ -92,7 +92,7 @@ class CloudflarePeer extends Peer<{
   wsServer: _cf.WebSocket;
   cfEnv: unknown;
   cfCtx: _cf.ExecutionContext;
-  context: Peer["context"];
+  context: PeerContext;
 }> {
   send(data: unknown) {
     this._internal.wsServer.send(toBufferLike(data));
