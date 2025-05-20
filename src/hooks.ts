@@ -128,7 +128,7 @@ export interface Hooks {
     request: Request & {
       readonly context?: PeerContext;
     },
-  ) => MaybePromise<Response | (ResponseInit & { namespace: string }) | void>;
+  ) => MaybePromise<Response | (ResponseInit & { namespace?: string }) | void>;
 
   /** A message is received */
   message: (peer: Peer, message: Message) => MaybePromise<void>;
