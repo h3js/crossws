@@ -52,7 +52,7 @@ export class AdapterHookable {
     let namespace =
       this.options.getNamespace?.(request) ?? new URL(request.url).pathname;
 
-    const context = { ...request.context };
+    const context = request.context || {};
 
     try {
       const res = await this.callHook(
