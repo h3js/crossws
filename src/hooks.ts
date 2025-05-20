@@ -42,7 +42,7 @@ export class AdapterHookable {
   }
 
   async upgrade(
-    request: Request & { readonly context?: PeerContext },
+    request: Request & { readonly context?: Record<string, unknown> },
   ): Promise<{
     context: PeerContext;
     namespace: string;
@@ -52,14 +52,7 @@ export class AdapterHookable {
     let namespace =
       this.options.getNamespace?.(request) ?? new URL(request.url).pathname;
 
-    let context = request.context;
-    if (!context) {
-      context = {};
-      Object.defineProperty(request, "context", {
-        enumerable: true,
-        value: context,
-      });
-    }
+    const context = { ...request.context };
 
     try {
       const res = await this.callHook(
@@ -71,6 +64,12 @@ export class AdapterHookable {
       }
       if ((res as { namespace?: string }).namespace) {
         namespace = (res as { namespace: string }).namespace;
+      }
+      if ((res as { context?: Record<string, unknown> }).context) {
+        Object.assign(
+          context,
+          (res as { context?: Record<string, unknown> }).context,
+        );
       }
       if ((res as Response).ok === false) {
         return { context, namespace, endResponse: res as Response };
@@ -120,13 +119,14 @@ export interface Hooks {
    * - You can throw a Response to abort the upgrade.
    * - You can return { headers } to modify the response.
    * - You can return { namespace } to change the pub/sub namespace.
+   * - You can return { context } to provide a custom peer context.
    *
    * @param request
    * @throws {Response}
    */
   upgrade: (
     request: Request & {
-      readonly context?: PeerContext;
+      readonly context?: Record<string, unknown>;
     },
   ) => MaybePromise<Response | (ResponseInit & { namespace?: string }) | void>;
 
