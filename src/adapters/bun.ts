@@ -51,15 +51,7 @@ const bunAdapter: Adapter<BunAdapter, BunOptions> = (options = {}) => {
           context,
           namespace,
         } satisfies ContextData,
-        // we need to pass a Headers instance otherwise the upgrade will fail
-        // if the user returns a sub-protocol header
-        // see https://github.com/oven-sh/bun/issues/18243
-        headers:
-          upgradeHeaders instanceof Headers
-            ? upgradeHeaders
-            : upgradeHeaders // eslint-disable-line unicorn/no-nested-ternary
-              ? new Headers(upgradeHeaders)
-              : undefined,
+        headers: upgradeHeaders,
       });
 
       if (!upgradeOK) {
