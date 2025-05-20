@@ -72,7 +72,10 @@ export function wsTests(getURL: () => string, opts: WSTestOpts): void {
     });
   });
 
-  test.skipIf(opts.adapter === "sse")("reject sub-protocol", async () => {
+  test.skipIf(
+    opts.adapter === "sse" ||
+      opts.adapter === "bun" /* https://github.com/oven-sh/bun/issues/18243 */,
+  )("reject sub-protocol", async () => {
     const ws = await wsConnect(getURL(), {
       headers: { "sec-websocket-protocol": "unsupported" },
     });
