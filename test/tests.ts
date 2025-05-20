@@ -72,16 +72,21 @@ export function wsTests(getURL: () => string, opts: WSTestOpts): void {
     });
   });
 
-  test.skipIf(
-    opts.adapter === "sse" ||
-      opts.adapter === "bun" /* https://github.com/oven-sh/bun/issues/18243 */,
-  )("reject sub-protocol", async () => {
+  test.skipIf(opts.adapter === "sse")("reject sub-protocol", async () => {
     const ws = await wsConnect(getURL(), {
       headers: { "sec-websocket-protocol": "unsupported" },
     });
-    expect(ws.inspector.headers).not.toMatchObject({
-      "sec-websocket-protocol": "unsupported",
-    });
+    if (opts.adapter === "bun") {
+      // This is a bug in Bun!
+      // https://github.com/oven-sh/bun/issues/18243
+      expect(ws.inspector.headers).toMatchObject({
+        "sec-websocket-protocol": "unsupported",
+      });
+    } else {
+      expect(ws.inspector.headers).not.toMatchObject({
+        "sec-websocket-protocol": "unsupported",
+      });
+    }
   });
 
   test("peer.request (headers, url, remoteAddress)", async () => {
