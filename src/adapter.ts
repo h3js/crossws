@@ -26,10 +26,6 @@ export function adapterUtils(
   } satisfies AdapterInstance;
 }
 
-export function getNamespace(opts: AdapterOptions, request: Request) {
-  return opts.getNamespace?.(request) ?? new URL(request.url).pathname;
-}
-
 export function getPeers<T extends Peer = Peer>(
   globalPeers: Map<string, Set<T>>,
   namespace: string,
