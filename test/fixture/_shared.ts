@@ -74,8 +74,8 @@ export function createDemo<T extends Adapter<any, any>>(
           },
         };
       }
-      req.context!.test = "1";
       return {
+        context: { test: "1" },
         headers: {
           "x-powered-by": "cross-ws",
           "set-cookie": "cross-ws=1; SameSite=None; Secure",
