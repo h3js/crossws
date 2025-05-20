@@ -4,6 +4,7 @@ import { execa, type ResultPromise as ExecaRes } from "execa";
 import { fileURLToPath } from "node:url";
 import { getRandomPort, waitForPort } from "get-port-please";
 import { wsTests } from "./tests";
+import type { Peer } from "../src";
 
 const fixtureDir = fileURLToPath(new URL("fixture", import.meta.url));
 

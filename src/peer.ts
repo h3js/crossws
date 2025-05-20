@@ -6,6 +6,7 @@ export interface PeerContext extends Record<string, unknown> {}
 export interface AdapterInternal {
   ws: unknown;
   request: Request;
+  namespace: string;
   peers?: Set<Peer>;
   context?: PeerContext;
 }
@@ -24,6 +25,10 @@ export abstract class Peer<Internal extends AdapterInternal = AdapterInternal> {
 
   get context(): PeerContext {
     return (this._internal.context ??= {});
+  }
+
+  get namespace(): string {
+    return this._internal.namespace;
   }
 
   /**

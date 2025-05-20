@@ -1,4 +1,4 @@
-import type { AdapterOptions } from "./adapter.ts";
+import { getNamespace, type AdapterOptions } from "./adapter.ts";
 import type { WSError } from "./error.ts";
 import type { Peer, PeerContext } from "./peer.ts";
 import type { Message } from "./message.ts";
@@ -44,10 +44,13 @@ export class AdapterHookable {
   async upgrade(
     request: Request & { readonly context?: PeerContext },
   ): Promise<{
+    context: PeerContext;
+    namespace: string;
     upgradeHeaders?: HeadersInit;
     endResponse?: Response;
-    context: PeerContext;
   }> {
+    const namespace = getNamespace(this.options, request);
+
     let context = request.context;
     if (!context) {
       context = {};
@@ -63,14 +66,15 @@ export class AdapterHookable {
         request as Request & { context?: PeerContext },
       );
       if (!res) {
-        return { context };
+        return { context, namespace };
       }
       if ((res as Response).ok === false) {
-        return { context, endResponse: res as Response };
+        return { context, namespace, endResponse: res as Response };
       }
       if (res.headers) {
         return {
           context,
+          namespace,
           upgradeHeaders: res.headers,
         };
       }
@@ -79,12 +83,13 @@ export class AdapterHookable {
       if (errResponse instanceof Response) {
         return {
           context,
+          namespace,
           endResponse: errResponse,
         };
       }
       throw error;
     }
-    return { context };
+    return { context, namespace };
   }
 }
 

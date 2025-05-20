@@ -16,7 +16,9 @@ describe("node", () => {
       if (req.url === "/peers") {
         return res.end(
           JSON.stringify({
-            peers: [...ws.peers].map((p) => p.id),
+            peers: [...ws.peers].flatMap(([namespace, peers]) =>
+              [...peers].map((p) => `${namespace}:${p.id}`),
+            ),
           }),
         );
       } else if (req.url!.startsWith("/publish")) {
@@ -48,8 +50,10 @@ describe("node", () => {
 
   test("forcefully terminates when force=true", async () => {
     ws.closeAll(undefined, undefined, true);
-    for (const { websocket } of ws.peers) {
-      expect(websocket.readyState).toBe(WebSocket.CLOSING);
+    for (const [_ns, peers] of ws.peers) {
+      for (const peer of peers) {
+        expect(peer.websocket.readyState).toBe(2 /* CLOSING */);
+      }
     }
   });
 });

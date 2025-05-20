@@ -13,7 +13,9 @@ export function createDemo<T extends Adapter<any, any>>(
 ): ReturnType<T> {
   const hooks = defineHooks({
     open(peer) {
-      peer.send(`Welcome to the server ${peer}!`);
+      peer.send(
+        `Welcome to the server ${peer}! (namespace: ${peer.namespace})`,
+      );
       peer.subscribe("chat");
       peer.publish("chat", `${peer} joined!`);
     },
@@ -96,7 +98,9 @@ export function handleDemoRoutes(
   if (url.pathname === "/peers") {
     return new Response(
       JSON.stringify({
-        peers: [...ws.peers].map((p) => p.id),
+        peers: [...ws.peers].flatMap(([namespace, peers]) =>
+          [...peers].map((p) => `${namespace}:${p.id}`),
+        ),
       }),
     );
   } else if (url.pathname === "/publish") {

@@ -1,6 +1,6 @@
 import type { AdapterOptions, AdapterInstance, Adapter } from "../adapter.ts";
 import { toBufferLike } from "../utils.ts";
-import { adapterUtils } from "../adapter.ts";
+import { adapterUtils, getPeers } from "../adapter.ts";
 import { AdapterHookable } from "../hooks.ts";
 import { Message } from "../message.ts";
 import { WSError } from "../error.ts";
@@ -22,6 +22,7 @@ type AugmentedReq = IncomingMessage & {
   _request: Request;
   _upgradeHeaders?: HeadersInit;
   _context: PeerContext;
+  _namespace: string;
 };
 
 export interface NodeAdapter extends AdapterInstance {
@@ -51,7 +52,7 @@ const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
   }
 
   const hooks = new AdapterHookable(options);
-  const peers = new Set<NodePeer>();
+  const globalPeers = new Map<string, Set<NodePeer>>();
 
   const wss: WebSocketServer =
     options.wss ||
@@ -60,9 +61,16 @@ const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
       ...(options.serverOptions as any),
     }) as WebSocketServer);
 
-  wss.on("connection", (ws, nodeReq) => {
+  wss.on("connection", (ws, nodeReq: AugmentedReq) => {
     const request = new NodeReqProxy(nodeReq);
-    const peer = new NodePeer({ ws, request, peers, nodeReq });
+    const peers = getPeers(globalPeers, nodeReq._namespace);
+    const peer = new NodePeer({
+      ws,
+      request,
+      peers,
+      nodeReq,
+      namespace: nodeReq._namespace,
+    });
     peers.add(peer);
     hooks.callHook("open", peer); // ws is already open
     ws.on("message", (data: unknown) => {
@@ -94,11 +102,11 @@ const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
   });
 
   return {
-    ...adapterUtils(peers),
+    ...adapterUtils(globalPeers),
     handleUpgrade: async (nodeReq, socket, head, webRequest) => {
       const request = webRequest || new NodeReqProxy(nodeReq);
 
-      const { upgradeHeaders, endResponse, context } =
+      const { upgradeHeaders, endResponse, context, namespace } =
         await hooks.upgrade(request);
       if (endResponse) {
         return sendResponse(socket, endResponse);
@@ -107,6 +115,7 @@ const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
       (nodeReq as AugmentedReq)._request = request;
       (nodeReq as AugmentedReq)._upgradeHeaders = upgradeHeaders;
       (nodeReq as AugmentedReq)._context = context;
+      (nodeReq as AugmentedReq)._namespace = namespace;
       wss.handleUpgrade(nodeReq, socket, head, (ws) => {
         wss.emit("connection", ws, nodeReq);
       });
@@ -130,6 +139,7 @@ export default nodeAdapter;
 class NodePeer extends Peer<{
   peers: Set<NodePeer>;
   request: Request;
+  namespace: string;
   nodeReq: IncomingMessage;
   ws: WebSocketT & { _peer?: NodePeer };
 }> {

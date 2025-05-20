@@ -1,6 +1,6 @@
 import type { AdapterOptions, AdapterInstance, Adapter } from "../adapter.ts";
 import { toBufferLike } from "../utils.ts";
-import { adapterUtils } from "../adapter.ts";
+import { adapterUtils, getPeers } from "../adapter.ts";
 import { AdapterHookable } from "../hooks.ts";
 import { Message } from "../message.ts";
 import { WSError } from "../error.ts";
@@ -33,11 +33,11 @@ const denoAdapter: Adapter<DenoAdapter, DenoOptions> = (options = {}) => {
   }
 
   const hooks = new AdapterHookable(options);
-  const peers = new Set<DenoPeer>();
+  const globalPeers = new Map<string, Set<DenoPeer>>();
   return {
-    ...adapterUtils(peers),
+    ...adapterUtils(globalPeers),
     handleUpgrade: async (request, info) => {
-      const { upgradeHeaders, endResponse, context } =
+      const { upgradeHeaders, endResponse, context, namespace } =
         await hooks.upgrade(request);
       if (endResponse) {
         return endResponse;
@@ -47,12 +47,14 @@ const denoAdapter: Adapter<DenoAdapter, DenoOptions> = (options = {}) => {
         // @ts-expect-error https://github.com/denoland/deno/pull/22242
         headers: upgradeHeaders,
       });
+      const peers = getPeers(globalPeers, namespace);
       const peer = new DenoPeer({
         ws: upgrade.socket,
         request,
         peers,
         denoInfo: info,
         context,
+        namespace,
       });
       peers.add(peer);
       upgrade.socket.addEventListener("open", () => {
@@ -84,6 +86,7 @@ class DenoPeer extends Peer<{
   peers: Set<DenoPeer>;
   denoInfo: ServeHandlerInfo;
   context: PeerContext;
+  namespace: string;
 }> {
   override get remoteAddress() {
     return this._internal.denoInfo.remoteAddr?.hostname;

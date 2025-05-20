@@ -2,7 +2,7 @@ import type { AdapterOptions, AdapterInstance, Adapter } from "../adapter.ts";
 import type { WebSocket } from "../../types/web.ts";
 import type uws from "uWebSockets.js";
 import { toBufferLike } from "../utils.ts";
-import { adapterUtils } from "../adapter.ts";
+import { adapterUtils, getPeers } from "../adapter.ts";
 import { AdapterHookable } from "../hooks.ts";
 import { Message } from "../message.ts";
 import { Peer, type PeerContext } from "../peer.ts";
@@ -14,9 +14,11 @@ type UserData = {
   peer?: UWSPeer;
   req: uws.HttpRequest;
   res: uws.HttpResponse;
+  webReq: UWSReqProxy;
   protocol: string;
   extensions: string;
   context: PeerContext;
+  namespace: string;
 };
 
 type WebSocketHandler = uws.WebSocketBehavior<UserData>;
@@ -45,12 +47,13 @@ export interface UWSOptions extends AdapterOptions {
 // https://github.com/websockets/ws/blob/master/doc/ws.md
 const uwsAdapter: Adapter<UWSAdapter, UWSOptions> = (options = {}) => {
   const hooks = new AdapterHookable(options);
-  const peers = new Set<UWSPeer>();
+  const globalPeers = new Map<string, Set<UWSPeer>>();
   return {
-    ...adapterUtils(peers),
+    ...adapterUtils(globalPeers),
     websocket: {
       ...options.uws,
       close(ws, code, message) {
+        const peers = getPeers(globalPeers, ws.getUserData().namespace);
         const peer = getPeer(ws, peers);
         ((peer as any)._internal.ws as UwsWebSocketProxy).readyState =
           2 /* CLOSING */;
@@ -63,10 +66,12 @@ const uwsAdapter: Adapter<UWSAdapter, UWSOptions> = (options = {}) => {
           3 /* CLOSED */;
       },
       message(ws, message, isBinary) {
+        const peers = getPeers(globalPeers, ws.getUserData().namespace);
         const peer = getPeer(ws, peers);
         hooks.callHook("message", peer, new Message(message, peer));
       },
       open(ws) {
+        const peers = getPeers(globalPeers, ws.getUserData().namespace);
         const peer = getPeer(ws, peers);
         peers.add(peer);
         hooks.callHook("open", peer);
@@ -77,9 +82,10 @@ const uwsAdapter: Adapter<UWSAdapter, UWSOptions> = (options = {}) => {
           aborted = true;
         });
 
-        const { upgradeHeaders, endResponse, context } = await hooks.upgrade(
-          new UWSReqProxy(req),
-        );
+        const webReq = new UWSReqProxy(req);
+
+        const { upgradeHeaders, endResponse, context, namespace } =
+          await hooks.upgrade(webReq);
         if (endResponse) {
           res.writeStatus(`${endResponse.status} ${endResponse.statusText}`);
           for (const [key, value] of endResponse.headers) {
@@ -118,10 +124,12 @@ const uwsAdapter: Adapter<UWSAdapter, UWSOptions> = (options = {}) => {
             {
               req,
               res,
+              webReq,
               protocol,
               extensions,
               context,
-            },
+              namespace,
+            } satisfies UserData,
             key,
             protocol,
             extensions,
@@ -146,7 +154,8 @@ function getPeer(uws: uws.WebSocket<UserData>, peers: Set<UWSPeer>): UWSPeer {
     peers,
     uws,
     ws: new UwsWebSocketProxy(uws),
-    request: new UWSReqProxy(uwsData.req),
+    request: uwsData.webReq,
+    namespace: uwsData.namespace,
     uwsData,
   });
   uwsData.peer = peer;
@@ -156,6 +165,7 @@ function getPeer(uws: uws.WebSocket<UserData>, peers: Set<UWSPeer>): UWSPeer {
 class UWSPeer extends Peer<{
   peers: Set<UWSPeer>;
   request: UWSReqProxy;
+  namespace: string;
   uws: uws.WebSocket<UserData>;
   ws: UwsWebSocketProxy;
   uwsData: UserData;
