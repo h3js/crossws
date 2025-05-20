@@ -30,7 +30,10 @@ export function getPeers<T extends Peer = Peer>(
   globalPeers: Map<string, Set<T>>,
   namespace: string,
 ): Set<T> {
-  let peers = globalPeers.get(namespace || "");
+  if (!namespace) {
+    throw new Error("Websocket publish namespace missing.");
+  }
+  let peers = globalPeers.get(namespace);
   if (!peers) {
     peers = new Set<T>();
     globalPeers.set(namespace, peers);
