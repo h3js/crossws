@@ -71,8 +71,8 @@ export class AdapterHookable {
           (res as { context?: Record<string, unknown> }).context,
         );
       }
-      if ((res as Response).ok === false) {
-        return { context, namespace, endResponse: res as Response };
+      if (res instanceof Response) {
+        return { context, namespace, endResponse: res };
       }
       if (res.headers) {
         return {
