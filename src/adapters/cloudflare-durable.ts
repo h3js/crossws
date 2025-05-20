@@ -191,7 +191,7 @@ class CloudflareDurablePeer extends Peer<{
       ws: ws as CF.WebSocket,
       request:
         (request as Request | undefined) || new StubRequest(state.u || ""),
-      namespace: namespace || state.n || "_",
+      namespace: namespace || state.n || "" /* later throws error if empty */,
       durable: durable as DurableObjectPub,
     });
     if (state.i) {
