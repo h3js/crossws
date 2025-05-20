@@ -7,8 +7,8 @@ export function adapterUtils(
   return {
     peers: globalPeers,
     publish(topic: string, message: any, options) {
-      for (const peers of options?.group
-        ? [globalPeers.get(options.group) || []]
+      for (const peers of options?.namespace
+        ? [globalPeers.get(options.namespace) || []]
         : globalPeers.values()) {
         let firstPeerWithTopic: Peer | undefined;
         for (const peer of peers) {
@@ -49,7 +49,7 @@ export interface AdapterInstance {
   readonly publish: (
     topic: string,
     data: unknown,
-    options?: { compress?: boolean; group?: string },
+    options?: { compress?: boolean; namespace?: string },
   ) => void;
 }
 
