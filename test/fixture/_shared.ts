@@ -13,7 +13,9 @@ export function createDemo<T extends Adapter<any, any>>(
 ): ReturnType<T> {
   const hooks = defineHooks({
     open(peer) {
-      peer.send(`Welcome to the server ${peer}!`);
+      peer.send(
+        `Welcome to the server ${peer}! (namespace: ${peer.namespace})`,
+      );
       peer.subscribe("chat");
       peer.publish("chat", `${peer} joined!`);
     },
@@ -72,7 +74,6 @@ export function createDemo<T extends Adapter<any, any>>(
           },
         };
       }
-      req.context.test = "1";
       const headers: Record<string, string> = {
         "x-powered-by": "cross-ws",
         "set-cookie": "cross-ws=1; SameSite=None; Secure",
@@ -81,6 +82,7 @@ export function createDemo<T extends Adapter<any, any>>(
         headers["sec-websocket-protocol"] = "supported";
       }
       return {
+        context: { test: "1" },
         headers,
       };
     },
@@ -100,7 +102,9 @@ export function handleDemoRoutes(
   if (url.pathname === "/peers") {
     return new Response(
       JSON.stringify({
-        peers: [...ws.peers].map((p) => p.id),
+        peers: [...ws.peers].flatMap(([namespace, peers]) =>
+          [...peers].map((p) => `${namespace}:${p.id}`),
+        ),
       }),
     );
   } else if (url.pathname === "/publish") {

@@ -3,10 +3,11 @@ import type { DurableObject } from "cloudflare:workers";
 import type { AdapterOptions, AdapterInstance, Adapter } from "../adapter.ts";
 import type * as web from "../../types/web.ts";
 import { toBufferLike } from "../utils.ts";
-import { adapterUtils } from "../adapter.ts";
+import { adapterUtils, getPeers } from "../adapter.ts";
 import { AdapterHookable } from "../hooks.ts";
 import { Message } from "../message.ts";
 import { Peer } from "../peer.ts";
+import { StubRequest } from "../_request.ts";
 
 type ResolveDurableStub = (
   req: CF.Request,
@@ -48,7 +49,7 @@ const cloudflareDurableAdapter: Adapter<
   CloudflareOptions
 > = (opts = {}) => {
   const hooks = new AdapterHookable(opts);
-  const peers = new Set<CloudflareDurablePeer>();
+  const globalPeers = new Map<string, Set<CloudflareDurablePeer>>();
 
   const resolveDurableStub: ResolveDurableStub =
     opts.resolveDurableStub ||
@@ -65,7 +66,7 @@ const cloudflareDurableAdapter: Adapter<
     });
 
   return {
-    ...adapterUtils(peers),
+    ...adapterUtils(globalPeers),
     handleUpgrade: async (req, env, context) => {
       const stub = await resolveDurableStub(req as CF.Request, env, context);
       return stub.fetch(req as CF.Request) as unknown as Response;
@@ -74,12 +75,14 @@ const cloudflareDurableAdapter: Adapter<
       // placeholder
     },
     handleDurableUpgrade: async (obj, request) => {
-      const { upgradeHeaders, endResponse } = await hooks.upgrade(
+      const { upgradeHeaders, endResponse, namespace } = await hooks.upgrade(
         request as Request,
       );
       if (endResponse) {
         return endResponse;
       }
+
+      const peers = getPeers(globalPeers, namespace);
 
       const pair = new WebSocketPair();
       const client = pair[0];
@@ -88,6 +91,7 @@ const cloudflareDurableAdapter: Adapter<
         obj,
         server as unknown as CF.WebSocket,
         request,
+        namespace,
       );
       peers.add(peer);
       (obj as DurableObjectPub).ctx.acceptWebSocket(server);
@@ -106,6 +110,7 @@ const cloudflareDurableAdapter: Adapter<
     },
     handleDurableClose: async (obj, ws, code, reason, wasClean) => {
       const peer = CloudflareDurablePeer._restore(obj, ws as CF.WebSocket);
+      const peers = getPeers(globalPeers, peer.namespace);
       peers.delete(peer);
       const details = { code, reason, wasClean };
       await hooks.callHook("close", peer, details);
@@ -122,6 +127,7 @@ class CloudflareDurablePeer extends Peer<{
   request: Request;
   peers?: never;
   durable: DurableObjectPub;
+  namespace: string;
 }> {
   override get peers() {
     return new Set(
@@ -174,6 +180,7 @@ class CloudflareDurablePeer extends Peer<{
     durable: DurableObject,
     ws: AugmentedWebSocket,
     request?: Request | CF.Request,
+    namespace?: string,
   ): CloudflareDurablePeer {
     let peer = ws._crosswsPeer;
     if (peer) {
@@ -182,7 +189,9 @@ class CloudflareDurablePeer extends Peer<{
     const state = (ws.deserializeAttachment() || {}) as AttachedState;
     peer = ws._crosswsPeer = new CloudflareDurablePeer({
       ws: ws as CF.WebSocket,
-      request: (request as Request) || { url: state.u },
+      request:
+        (request as Request | undefined) || new StubRequest(state.u || ""),
+      namespace: namespace || state.n || "" /* later throws error if empty */,
       durable: durable as DurableObjectPub,
     });
     if (state.i) {
@@ -234,6 +243,8 @@ type AttachedState = {
   i?: string;
   /** Request url */
   u?: string;
+  /** Connection namespace */
+  n?: string;
 };
 
 export interface CloudflareDurableAdapter extends AdapterInstance {

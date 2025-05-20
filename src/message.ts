@@ -196,7 +196,13 @@ export class Message implements Partial<MessageEvent> {
     return this.text();
   }
 
-  [kNodeInspect](): { data: unknown } {
-    return { data: this.rawData };
+  [kNodeInspect](): unknown {
+    return {
+      message: {
+        id: this.id,
+        peer: this.peer,
+        text: this.text(),
+      },
+    };
   }
 }

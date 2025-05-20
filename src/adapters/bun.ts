@@ -1,10 +1,10 @@
 import type { WebSocketHandler, ServerWebSocket, Server } from "bun";
 import type { AdapterOptions, AdapterInstance, Adapter } from "../adapter.ts";
 import { toBufferLike } from "../utils.ts";
-import { adapterUtils } from "../adapter.ts";
+import { adapterUtils, getPeers } from "../adapter.ts";
 import { AdapterHookable } from "../hooks.ts";
 import { Message } from "../message.ts";
-import { Peer } from "../peer.ts";
+import { Peer, type PeerContext } from "../peer.ts";
 
 // --- types ---
 
@@ -17,21 +17,29 @@ export interface BunOptions extends AdapterOptions {}
 
 type ContextData = {
   peer?: BunPeer;
+  namespace: string;
   request: Request;
   server?: Server;
-  context: Peer["context"];
+  context: PeerContext;
 };
 
 // --- adapter ---
 
 // https://bun.sh/docs/api/websockets
 const bunAdapter: Adapter<BunAdapter, BunOptions> = (options = {}) => {
+  if (typeof Bun === "undefined") {
+    // eslint-disable-next-line unicorn/prefer-type-error
+    throw new Error(
+      "[crossws] Using Bun adapter in an incompatible environment.",
+    );
+  }
+
   const hooks = new AdapterHookable(options);
-  const peers = new Set<BunPeer>();
+  const globalPeers = new Map<string, Set<BunPeer>>();
   return {
-    ...adapterUtils(peers),
+    ...adapterUtils(globalPeers),
     async handleUpgrade(request, server) {
-      const { upgradeHeaders, endResponse, context } =
+      const { upgradeHeaders, endResponse, context, namespace } =
         await hooks.upgrade(request);
       if (endResponse) {
         return endResponse;
@@ -41,6 +49,7 @@ const bunAdapter: Adapter<BunAdapter, BunOptions> = (options = {}) => {
           server,
           request,
           context,
+          namespace,
         } satisfies ContextData,
         // we need to pass a Headers instance otherwise the upgrade will fail
         // if the user returns a sub-protocol header
@@ -48,7 +57,7 @@ const bunAdapter: Adapter<BunAdapter, BunOptions> = (options = {}) => {
         headers:
           upgradeHeaders instanceof Headers
             ? upgradeHeaders
-            : upgradeHeaders
+            : upgradeHeaders // eslint-disable-line unicorn/no-nested-ternary
               ? new Headers(upgradeHeaders)
               : undefined,
       });
@@ -59,15 +68,18 @@ const bunAdapter: Adapter<BunAdapter, BunOptions> = (options = {}) => {
     },
     websocket: {
       message: (ws, message) => {
+        const peers = getPeers(globalPeers, ws.data.namespace);
         const peer = getPeer(ws, peers);
         hooks.callHook("message", peer, new Message(message, peer));
       },
       open: (ws) => {
+        const peers = getPeers(globalPeers, ws.data.namespace);
         const peer = getPeer(ws, peers);
         peers.add(peer);
         hooks.callHook("open", peer);
       },
       close: (ws, code, reason) => {
+        const peers = getPeers(globalPeers, ws.data.namespace);
         const peer = getPeer(ws, peers);
         peers.delete(peer);
         hooks.callHook("close", peer, { code, reason });
@@ -84,19 +96,22 @@ function getPeer(
   ws: ServerWebSocket<ContextData>,
   peers: Set<BunPeer>,
 ): BunPeer {
-  if (ws.data?.peer) {
+  if (ws.data.peer) {
     return ws.data.peer;
   }
-  const peer = new BunPeer({ ws, request: ws.data.request, peers });
-  ws.data = {
-    ...ws.data,
-    peer,
-  };
+  const peer = new BunPeer({
+    ws,
+    request: ws.data.request,
+    peers,
+    namespace: ws.data.namespace,
+  });
+  ws.data.peer = peer;
   return peer;
 }
 
 class BunPeer extends Peer<{
   ws: ServerWebSocket<ContextData>;
+  namespace: string;
   request: Request;
   peers: Set<BunPeer>;
 }> {
@@ -104,7 +119,7 @@ class BunPeer extends Peer<{
     return this._internal.ws.remoteAddress;
   }
 
-  override get context(): Peer["context"] {
+  override get context(): PeerContext {
     return this._internal.ws.data.context;
   }
 

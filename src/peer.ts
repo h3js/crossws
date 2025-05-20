@@ -1,12 +1,14 @@
 import type * as web from "../types/web.ts";
-import type { UpgradeRequest } from "./hooks.ts";
 import { kNodeInspect } from "./utils.ts";
+
+export interface PeerContext extends Record<string, unknown> {}
 
 export interface AdapterInternal {
   ws: unknown;
-  request: UpgradeRequest;
+  request: Request;
+  namespace: string;
   peers?: Set<Peer>;
-  context?: Peer["context"];
+  context?: PeerContext;
 }
 
 export abstract class Peer<Internal extends AdapterInternal = AdapterInternal> {
@@ -21,8 +23,12 @@ export abstract class Peer<Internal extends AdapterInternal = AdapterInternal> {
     this._internal = internal;
   }
 
-  get context(): Record<string, unknown> {
+  get context(): PeerContext {
     return (this._internal.context ??= {});
+  }
+
+  get namespace(): string {
+    return this._internal.namespace;
   }
 
   /**
@@ -41,7 +47,7 @@ export abstract class Peer<Internal extends AdapterInternal = AdapterInternal> {
   }
 
   /** upgrade request */
-  get request(): UpgradeRequest {
+  get request(): Request {
     return this._internal.request;
   }
 
@@ -116,15 +122,13 @@ export abstract class Peer<Internal extends AdapterInternal = AdapterInternal> {
     return "WebSocket";
   }
 
-  [kNodeInspect](): Record<string, unknown> {
-    return Object.fromEntries(
-      [
-        ["id", this.id],
-        ["remoteAddress", this.remoteAddress],
-        ["peers", this.peers],
-        ["webSocket", this.websocket],
-      ].filter((p) => p[1]),
-    );
+  [kNodeInspect](): unknown {
+    return {
+      peer: {
+        id: this.id,
+        ip: this.remoteAddress,
+      },
+    };
   }
 }
 

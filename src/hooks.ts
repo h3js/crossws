@@ -1,6 +1,6 @@
 import type { AdapterOptions } from "./adapter.ts";
 import type { WSError } from "./error.ts";
-import type { Peer } from "./peer.ts";
+import type { Peer, PeerContext } from "./peer.ts";
 import type { Message } from "./message.ts";
 
 export class AdapterHookable {
@@ -20,7 +20,8 @@ export class AdapterHookable {
     const globalPromise = globalHook?.(arg1 as any, arg2 as any);
 
     // Resolve hooks for request
-    const resolveHooksPromise = this.options.resolve?.(arg1);
+    const request = (arg1 as Peer).request || arg1;
+    const resolveHooksPromise = this.options.resolve?.(request);
     if (!resolveHooksPromise) {
       return globalPromise as any; // Fast path: no hooks to resolve
     }
@@ -41,35 +42,42 @@ export class AdapterHookable {
   }
 
   async upgrade(
-    request: UpgradeRequest & { readonly context?: Peer["context"] },
+    request: Request & { readonly context?: Record<string, unknown> },
   ): Promise<{
+    context: PeerContext;
+    namespace: string;
     upgradeHeaders?: HeadersInit;
     endResponse?: Response;
-    context: Peer["context"];
   }> {
-    let context = request.context;
-    if (!context) {
-      context = {};
-      Object.defineProperty(request, "context", {
-        enumerable: true,
-        value: context,
-      });
-    }
+    let namespace =
+      this.options.getNamespace?.(request) ?? new URL(request.url).pathname;
+
+    const context = request.context || {};
 
     try {
       const res = await this.callHook(
         "upgrade",
-        request as UpgradeRequest & { context: Peer["context"] },
+        request as Request & { context?: PeerContext },
       );
       if (!res) {
-        return { context };
+        return { context, namespace };
+      }
+      if ((res as { namespace?: string }).namespace) {
+        namespace = (res as { namespace: string }).namespace;
+      }
+      if ((res as { context?: Record<string, unknown> }).context) {
+        Object.assign(
+          context,
+          (res as { context?: Record<string, unknown> }).context,
+        );
       }
       if ((res as Response).ok === false) {
-        return { context, endResponse: res as Response };
+        return { context, namespace, endResponse: res as Response };
       }
       if (res.headers) {
         return {
           context,
+          namespace,
           upgradeHeaders: res.headers,
         };
       }
@@ -78,12 +86,13 @@ export class AdapterHookable {
       if (errResponse instanceof Response) {
         return {
           context,
+          namespace,
           endResponse: errResponse,
         };
       }
       throw error;
     }
-    return { context };
+    return { context, namespace };
   }
 }
 
@@ -96,30 +105,34 @@ export function defineHooks<T extends Partial<Hooks> = Partial<Hooks>>(
 }
 
 export type ResolveHooks = (
-  info: RequestInit | Peer,
+  request: Request & { readonly context?: PeerContext },
 ) => Partial<Hooks> | Promise<Partial<Hooks>>;
 
 export type MaybePromise<T> = T | Promise<T>;
 
-export type UpgradeRequest =
-  | Request
-  | {
-      url: string;
-      headers: Headers;
-    };
-
 export type UpgradeError = Response | { readonly response: Response };
 
 export interface Hooks {
-  /** Upgrading */
   /**
+   * Upgrading a request to a WebSocket connection.
+   *
+   * - You can throw a Response to abort the upgrade.
+   * - You can return { headers } to modify the response.
+   * - You can return { namespace } to change the pub/sub namespace.
+   * - You can return { context } to provide a custom peer context.
    *
    * @param request
    * @throws {Response}
    */
   upgrade: (
-    request: UpgradeRequest & { context: Peer["context"] },
-  ) => MaybePromise<Response | ResponseInit | void>;
+    request: Request & {
+      readonly context?: Record<string, unknown>;
+    },
+  ) => MaybePromise<
+    | Response
+    | (ResponseInit & { namespace?: string; context?: PeerContext })
+    | void
+  >;
 
   /** A message is received */
   message: (peer: Peer, message: Message) => MaybePromise<void>;

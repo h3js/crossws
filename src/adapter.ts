@@ -1,34 +1,60 @@
 import type { Hooks, ResolveHooks } from "./hooks.ts";
 import type { Peer } from "./peer.ts";
 
-export function adapterUtils(peers: Set<Peer>): AdapterInstance {
+export function adapterUtils(
+  globalPeers: Map<string, Set<Peer>>,
+): AdapterInstance {
   return {
-    peers,
+    peers: globalPeers,
     publish(topic: string, message: any, options) {
-      let firstPeerWithTopic: Peer | undefined;
-      for (const peer of peers) {
-        if (peer.topics.has(topic)) {
-          firstPeerWithTopic = peer;
-          break;
+      for (const peers of options?.namespace
+        ? [globalPeers.get(options.namespace) || []]
+        : globalPeers.values()) {
+        let firstPeerWithTopic: Peer | undefined;
+        for (const peer of peers) {
+          if (peer.topics.has(topic)) {
+            firstPeerWithTopic = peer;
+            break;
+          }
         }
-      }
-      if (firstPeerWithTopic) {
-        firstPeerWithTopic.send(message, options);
-        firstPeerWithTopic.publish(topic, message, options);
+        if (firstPeerWithTopic) {
+          firstPeerWithTopic.send(message, options);
+          firstPeerWithTopic.publish(topic, message, options);
+        }
       }
     },
   } satisfies AdapterInstance;
 }
 
+export function getPeers<T extends Peer = Peer>(
+  globalPeers: Map<string, Set<T>>,
+  namespace: string,
+): Set<T> {
+  if (!namespace) {
+    throw new Error("Websocket publish namespace missing.");
+  }
+  let peers = globalPeers.get(namespace);
+  if (!peers) {
+    peers = new Set<T>();
+    globalPeers.set(namespace, peers);
+  }
+  return peers;
+}
+
 // --- types ---
 
 export interface AdapterInstance {
-  readonly peers: Set<Peer>;
-  readonly publish: Peer["publish"];
+  readonly peers: Map<string, Set<Peer>>;
+  readonly publish: (
+    topic: string,
+    data: unknown,
+    options?: { compress?: boolean; namespace?: string },
+  ) => void;
 }
 
 export interface AdapterOptions {
   resolve?: ResolveHooks;
+  getNamespace?: (request: Request) => string;
   hooks?: Partial<Hooks>;
 }
 

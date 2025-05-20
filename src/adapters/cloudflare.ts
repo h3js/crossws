@@ -1,10 +1,10 @@
 import type { AdapterOptions, AdapterInstance, Adapter } from "../adapter.ts";
 import { toBufferLike } from "../utils.ts";
-import { adapterUtils } from "../adapter.ts";
+import { adapterUtils, getPeers } from "../adapter.ts";
 import { AdapterHookable } from "../hooks.ts";
 import { Message } from "../message.ts";
 import { WSError } from "../error.ts";
-import { Peer } from "../peer.ts";
+import { Peer, type PeerContext } from "../peer.ts";
 
 import type * as _cf from "@cloudflare/workers-types";
 
@@ -30,16 +30,17 @@ const cloudflareAdapter: Adapter<CloudflareAdapter, CloudflareOptions> = (
   options = {},
 ) => {
   const hooks = new AdapterHookable(options);
-  const peers = new Set<CloudflarePeer>();
+  const globalPeers = new Map<string, Set<CloudflarePeer>>();
   return {
-    ...adapterUtils(peers),
+    ...adapterUtils(globalPeers),
     handleUpgrade: async (request, env, cfCtx) => {
-      const { upgradeHeaders, endResponse, context } = await hooks.upgrade(
-        request as unknown as Request,
-      );
+      const { upgradeHeaders, endResponse, context, namespace } =
+        await hooks.upgrade(request as unknown as Request);
       if (endResponse) {
         return endResponse as unknown as _cf.Response;
       }
+
+      const peers = getPeers(globalPeers, namespace);
 
       const pair = new WebSocketPair();
       const client = pair[0];
@@ -52,6 +53,7 @@ const cloudflareAdapter: Adapter<CloudflareAdapter, CloudflareOptions> = (
         cfEnv: env,
         cfCtx: cfCtx,
         context,
+        namespace,
       });
       peers.add(peer);
       server.accept();
@@ -92,7 +94,8 @@ class CloudflarePeer extends Peer<{
   wsServer: _cf.WebSocket;
   cfEnv: unknown;
   cfCtx: _cf.ExecutionContext;
-  context: Peer["context"];
+  context: PeerContext;
+  namespace: string;
 }> {
   send(data: unknown) {
     this._internal.wsServer.send(toBufferLike(data));

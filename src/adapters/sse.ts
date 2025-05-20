@@ -1,10 +1,10 @@
 import type { AdapterOptions, AdapterInstance, Adapter } from "../adapter.ts";
 import type * as web from "../../types/web.ts";
 import { toString } from "../utils.ts";
-import { adapterUtils } from "../adapter.ts";
+import { adapterUtils, getPeers } from "../adapter.ts";
 import { AdapterHookable } from "../hooks.ts";
 import { Message } from "../message.ts";
-import { Peer } from "../peer.ts";
+import { Peer, type PeerContext } from "../peer.ts";
 
 // --- types ---
 
@@ -21,13 +21,13 @@ export interface SSEOptions extends AdapterOptions {
 // https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events
 const sseAdapter: Adapter<SSEAdapter, SSEOptions> = (opts = {}) => {
   const hooks = new AdapterHookable(opts);
-  const peers = new Set<SSEPeer>();
+  const globalPeers = new Map<string, Set<SSEPeer>>();
   const peersMap = opts.bidir ? new Map<string, SSEPeer>() : undefined;
 
   return {
-    ...adapterUtils(peers),
+    ...adapterUtils(globalPeers),
     fetch: async (request: Request) => {
-      const { upgradeHeaders, endResponse, context } =
+      const { upgradeHeaders, endResponse, context, namespace } =
         await hooks.upgrade(request);
       if (endResponse) {
         return endResponse;
@@ -55,6 +55,7 @@ const sseAdapter: Adapter<SSEAdapter, SSEOptions> = (opts = {}) => {
       } else {
         // Add a new peer
         const ws = new SSEWebSocketStub();
+        const peers = getPeers(globalPeers, namespace);
         peer = new SSEPeer({
           peers,
           peersMap,
@@ -62,6 +63,7 @@ const sseAdapter: Adapter<SSEAdapter, SSEOptions> = (opts = {}) => {
           hooks,
           ws,
           context,
+          namespace,
         });
         peers.add(peer);
         if (opts.bidir) {
@@ -102,7 +104,8 @@ class SSEPeer extends Peer<{
   request: Request;
   ws: SSEWebSocketStub;
   hooks: AdapterHookable;
-  context: Peer["context"];
+  context: PeerContext;
+  namespace: string;
 }> {
   _sseStream: ReadableStream; // server -> client
   _sseStreamController?: ReadableStreamDefaultController;
