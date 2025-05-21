@@ -36,6 +36,10 @@ export class $DurableObject extends DurableObject {
     return ws.handleDurableUpgrade(this, request);
   }
 
+  webSocketPublish(topic: string, message: unknown, opts: any) {
+    return ws.handleDurablePublish(this, topic, message, opts);
+  }
+
   override async webSocketMessage(
     client: WebSocket,
     message: ArrayBuffer | string,

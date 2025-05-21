@@ -2,6 +2,7 @@ import type * as CF from "@cloudflare/workers-types";
 import type { DurableObject } from "cloudflare:workers";
 import type { AdapterOptions, AdapterInstance, Adapter } from "../adapter.ts";
 import type * as web from "../../types/web.ts";
+import { env as cfGlobalEnv } from "cloudflare:workers";
 import { toBufferLike } from "../utils.ts";
 import { adapterUtils, getPeers } from "../adapter.ts";
 import { AdapterHookable } from "../hooks.ts";
@@ -10,14 +11,15 @@ import { Peer, type PeerContext } from "../peer.ts";
 import { StubRequest } from "../_request.ts";
 import { WSError } from "../error.ts";
 
+type WSDurableObjectStub = CF.DurableObjectStub & {
+  webSocketPublish?: (topic: string, data: unknown, opts: any) => Promise<void>;
+};
+
 type ResolveDurableStub = (
-  req: CF.Request,
+  req: CF.Request | undefined,
   env: unknown,
-  context: CF.ExecutionContext,
-) =>
-  | CF.DurableObjectStub
-  | undefined
-  | Promise<CF.DurableObjectStub | undefined>;
+  context: CF.ExecutionContext | undefined,
+) => WSDurableObjectStub | undefined | Promise<WSDurableObjectStub | undefined>;
 
 export interface CloudflareOptions extends AdapterOptions {
   /**
@@ -60,17 +62,21 @@ const cloudflareAdapter: Adapter<
 
   const resolveDurableStub: ResolveDurableStub =
     opts.resolveDurableStub ||
-    ((_req, env: any, _context): CF.DurableObjectStub | undefined => {
+    ((_req, env: any, _context): WSDurableObjectStub | undefined => {
       const bindingName = opts.bindingName || "$DurableObject";
-      const binding = env[bindingName] as CF.DurableObjectNamespace;
+      const binding = (env || cfGlobalEnv)[
+        bindingName
+      ] as CF.DurableObjectNamespace;
       if (binding) {
         const instanceId = binding.idFromName(opts.instanceName || "crossws");
         return binding.get(instanceId);
       }
     });
 
+  const { publish: durablePublish, ...utils } = adapterUtils(globalPeers);
+
   return {
-    ...adapterUtils(globalPeers),
+    ...utils,
     handleUpgrade: async (request, cfEnv, cfCtx) => {
       // Upgrade request with Durable Object binding
       const stub = await resolveDurableStub(
@@ -178,6 +184,23 @@ const cloudflareAdapter: Adapter<
       peers.delete(peer);
       const details = { code, reason, wasClean };
       await hooks.callHook("close", peer, details);
+    },
+    handleDurablePublish: async (_obj, topic, data, opts) => {
+      return durablePublish(topic, data, opts);
+    },
+    publish: async (topic, data, opts) => {
+      const stub = await resolveDurableStub(undefined, cfGlobalEnv, undefined);
+      if (!stub) {
+        throw new Error("[crossws] Durable Object binding cannot be resolved.");
+      }
+      // - Compatibility date >= 2024-04-03 or "rpc" feature flag is required
+      // - We cannot check if webSocketPublish is exposed or not without RPC call
+      try {
+        return await stub.webSocketPublish!(topic, data, opts);
+      } catch (error) {
+        console.error(error);
+        throw error;
+      }
     },
   };
 };
@@ -358,6 +381,13 @@ export interface CloudflareDurableAdapter extends AdapterInstance {
     ws: WebSocket | CF.WebSocket | web.WebSocket,
     message: ArrayBuffer | string,
   ): Promise<void>;
+
+  handleDurablePublish: (
+    obj: DurableObject,
+    topic: string,
+    data: unknown,
+    opts: any,
+  ) => Promise<void>;
 
   handleDurableClose(
     obj: DurableObject,

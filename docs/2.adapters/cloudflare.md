@@ -53,6 +53,10 @@ export class $DurableObject extends DurableObject {
     return ws.handleDurableMessage(this, client, message);
   }
 
+  webSocketPublish(topic, message, opts) {
+    return ws.handleDurablePublish(this, topic, message, opts);
+  }
+
   webSocketClose(client, code, reason, wasClean) {
     return ws.handleDurableClose(this, client, code, reason, wasClean);
   }

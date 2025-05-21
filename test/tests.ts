@@ -175,7 +175,7 @@ export function wsTests(getURL: () => string, opts: WSTestOpts): void {
     expect(peers1).toMatchObject(peers2);
   });
 
-  test.skipIf(opts.adapter.startsWith("cloudflare"))(
+  test.skipIf(opts.adapter === "cloudflare" /* durable only */)(
     "publish to all peers from adapter",
     async () => {
       const ws1 = await wsConnect(getURL(), { skip: 1 });
