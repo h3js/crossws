@@ -13,7 +13,7 @@ To integrate crossws with Cloudflare [Durable Objects](https://developers.cloudf
 
 ```js
 import { DurableObject } from "cloudflare:workers";
-import crossws from "crossws/adapters/cloudflare-durable";
+import crossws from "crossws/adapters/cloudflare";
 
 const ws = crossws({
   // bindingName: "$DurableObject",
@@ -72,7 +72,7 @@ new_classes = ["$DurableObject"]
 ```
 
 ::read-more
-See [`test/fixture/cloudflare-durable.ts`](https://github.com/h3js/crossws/blob/main/test/fixture/cloudflare-durable.ts) for demo and [`src/adapters/cloudflare-durable.ts`](https://github.com/h3js/crossws/blob/main/src/adapters/cloudflare-durable.ts) for implementation.
+See [`test/fixture/cloudflare-durable.ts`](https://github.com/h3js/crossws/blob/main/test/fixture/cloudflare-durable.ts) for demo and [`src/adapters/cloudflare.ts`](https://github.com/h3js/crossws/blob/main/src/adapters/cloudflare.ts) for implementation.
 ::
 
 ### Adapter options
