@@ -21,6 +21,7 @@
     "./server": {
       "deno": "./dist/server/deno.mjs",
       "bun": "./dist/server/bun.mjs",
+      "workerd": "./dist/server/cloudflare.mjs",
       "node": "./dist/server/node.mjs",
       "default": "./dist/server/default.mjs"
     },

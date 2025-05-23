@@ -11,6 +11,7 @@ export default defineBuildConfig({
     "bun",
     "@deno/types",
     "uWebSockets.js",
+    "cloudflare:workers",
   ],
   hooks: {
     async "build:done"(ctx) {

@@ -1,22 +1,23 @@
-import { serve as srvxServe } from "srvx";
-import adapter from "../adapters/sse";
+import { serve as srvxServe } from "srvx/cloudflare";
+import adapter from "../adapters/cloudflare";
 
 import type { Server, ServerPlugin } from "srvx/types";
 import type { WSOptions, ServerWithWSOptions } from "./_types";
 
 export function plugin(wsOpts: WSOptions): ServerPlugin {
-  const ws = adapter({
-    hooks: wsOpts,
-    resolve: wsOpts.resolve,
-    ...wsOpts.options?.sse,
-  });
-  console.warn(
-    "[crossws] Using SSE adapter for WebSocket support. This requires a custom WebSocket client (https://crossws.h3.dev/adapters/sse).",
-  );
   return (server) => {
+    const ws = adapter({
+      hooks: wsOpts,
+      resolve: wsOpts.resolve,
+      ...wsOpts.options?.cloudflare,
+    });
     server.options.middleware.unshift((req, next) => {
       if (req.headers.get("upgrade")?.toLowerCase() === "websocket") {
-        return ws.fetch(req);
+        return ws.handleUpgrade(
+          req,
+          req.runtime!.cloudflare!.env,
+          req.runtime!.cloudflare!.context,
+        );
       }
       return next();
     });

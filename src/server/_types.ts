@@ -10,6 +10,8 @@ import type { Hooks } from "../hooks";
 import type { BunOptions } from "../adapters/bun";
 import type { DenoOptions } from "../adapters/deno";
 import type { NodeOptions } from "../adapters/node";
+import type { SSEOptions } from "../adapters/sse";
+import type { CloudflareOptions } from "../adapters/cloudflare";
 
 export type WSOptions = Partial<Hooks> & {
   resolve?: (req: ServerRequest) => Partial<Hooks> | Promise<Partial<Hooks>>;
@@ -17,6 +19,8 @@ export type WSOptions = Partial<Hooks> & {
     bun?: BunOptions;
     deno?: DenoOptions;
     node?: NodeOptions;
+    sse?: SSEOptions;
+    cloudflare?: CloudflareOptions;
   };
 };
 
