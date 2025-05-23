@@ -93,23 +93,11 @@ importers:
         specifier: ^8.18.2
         version: 8.18.2
 
-  examples/h3:
+  playground:
     dependencies:
       crossws:
         specifier: workspace:*
-        version: link:../..
-      h3:
-        specifier: latest
-        version: 1.15.3
-      listhen:
-        specifier: ^1.7.1
-        version: 1.9.0
-
-  examples/srvx:
-    dependencies:
-      crossws:
-        specifier: workspace:*
-        version: link:../..
+        version: link:..
       srvx:
         specifier: latest
         version: 0.7.1
