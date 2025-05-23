@@ -74,7 +74,9 @@
 
         ws.addEventListener("message", async (event) => {
           let data =
-            typeof event.data === "string" ? event.data : await event.data.text();
+            typeof event.data === "string"
+              ? event.data
+              : await event.data.text();
           const { user = "system", message = "" } = data.startsWith("{")
             ? JSON.parse(data)
             : { message: data };

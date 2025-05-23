@@ -1,20 +1,15 @@
-import { createApp } from "h3";
-import { defineHooks } from "crossws";
+// Works with Bun, Deno and Node.js (also Cloudflare or SSE as fallback)
+import { serve } from "crossws/server";
 
-export const app = createApp();
-
-// Listhen automatically sets up integration!
-// Learn more: https://crossws.h3.dev
-
-export const websocket = {
-  hooks: defineHooks({
+serve({
+  websocket: {
     open(peer) {
       console.log("[ws] open", peer);
       peer.send({ user: "server", message: `Welcome ${peer}!` });
     },
 
     message(peer, message) {
-      console.log("[ws] message", peer, message);
+      console.log("[ws] message", message);
       if (message.text().includes("ping")) {
         peer.send({ user: "server", message: "pong" });
       } else {
@@ -29,5 +24,12 @@ export const websocket = {
     error(peer, error) {
       console.log("[ws] error", peer, error);
     },
-  }),
-};
+  },
+  fetch: () =>
+    fetch(
+      "https://raw.githubusercontent.com/h3js/crossws/refs/heads/main/playground/public/index.html",
+    ).then(
+      (res) =>
+        new Response(res.body, { headers: { "Content-Type": "text/html" } }),
+    ),
+});
