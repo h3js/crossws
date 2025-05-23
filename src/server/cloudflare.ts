@@ -29,5 +29,5 @@ export function serve(options: ServerWithWSOptions): Server {
     options.plugins ||= [];
     options.plugins.push(plugin(options.websocket));
   }
-  return srvxServe(options);
+  return srvxServe(options) as unknown as Server; // cloudflare fetch types are incompatible...
 }
