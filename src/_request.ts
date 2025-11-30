@@ -29,7 +29,7 @@ export const StubRequest = /* @__PURE__ */ (() => {
     }
 
     get signal() {
-      return (this._signal ??= new AbortSignal());
+      return (this._signal ??= new AbortController().signal;
     }
 
     get cache() {
