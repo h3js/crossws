@@ -48,7 +48,7 @@
     "*.d.ts"
   ],
   "scripts": {
-    "build": "unbuild",
+    "build": "obuild",
     "dev": "vitest",
     "lint": "eslint --cache . && prettier -c src test",
     "lint:fix": "eslint --cache . --fix && prettier -w src test",
@@ -87,6 +87,7 @@
     "h3": "^2.0.1-rc.8",
     "jiti": "^2.6.1",
     "listhen": "^1.9.0",
+    "obuild": "^0.4.16",
     "prettier": "^3.8.0",
     "srvx": "^0.10.1",
     "typescript": "^5.9.3",
