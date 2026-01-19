@@ -1,7 +1,7 @@
 import { serve as srvxServe } from "srvx";
 import adapter from "../adapters/sse";
 
-import type { Server, ServerPlugin } from "srvx/types";
+import type { Server, ServerPlugin } from "srvx";
 import type { WSOptions, ServerWithWSOptions } from "./_types";
 
 export function plugin(wsOpts: WSOptions): ServerPlugin {
