@@ -43,7 +43,6 @@ export function toString(val: any): string {
   if (typeof data === "string") {
     return data;
   }
-  // eslint-disable-next-line unicorn/prefer-code-point
   const base64 = btoa(String.fromCharCode(...new Uint8Array(data)));
   return `data:application/octet-stream;base64,${base64}`;
 }

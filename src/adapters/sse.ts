@@ -50,7 +50,6 @@ const sseAdapter: Adapter<SSEAdapter, SSEOptions> = (opts = {}) => {
         } catch {
           await stream.cancel().catch(() => {});
         }
-        // eslint-disable-next-line unicorn/no-null
         return new Response(null, {});
       } else {
         // Add a new peer

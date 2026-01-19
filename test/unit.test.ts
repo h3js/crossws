@@ -3,7 +3,6 @@ import { toBufferLike } from "../src/utils";
 
 test("toBufferLike", () => {
   expect(toBufferLike(undefined)).toBe("");
-  // eslint-disable-next-line unicorn/no-null
   expect(toBufferLike(null)).toBe("");
   expect(toBufferLike("")).toBe("");
   expect(toBufferLike("hello")).toBe("hello");

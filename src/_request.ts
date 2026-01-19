@@ -69,7 +69,7 @@ export const StubRequest = /* @__PURE__ */ (() => {
     }
 
     get body() {
-      return null; // eslint-disable-line unicorn/no-null
+      return null;
     }
 
     get bodyUsed() {
