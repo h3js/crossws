@@ -90,7 +90,7 @@
     "prettier": "^3.8.0",
     "srvx": "^0.10.1",
     "typescript": "^5.9.3",
-    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.44.0",
+    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.57.0",
     "unbuild": "^3.6.1",
     "undici": "^7.18.2",
     "vitest": "^4.0.17",
