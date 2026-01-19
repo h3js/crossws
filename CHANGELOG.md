@@ -1,5 +1,43 @@
 # Changelog
 
+## v0.4.2
+
+[compare changes](https://github.com/h3js/crossws/compare/v0.4.0...v0.4.2)
+
+### 🩹 Fixes
+
+- **node server:** Properly pass request to `NodeRequest` ([28e5d64](https://github.com/h3js/crossws/commit/28e5d64))
+- **cloudflare:** Send close frame ([#177](https://github.com/h3js/crossws/pull/177))
+
+### 📖 Documentation
+
+- Add new logo with cube style ([#171](https://github.com/h3js/crossws/pull/171))
+- Mention publish not broadcasting to sender ([#173](https://github.com/h3js/crossws/pull/173))
+
+### 🏡 Chore
+
+- **playground:** Add `start` command ([7ab898c](https://github.com/h3js/crossws/commit/7ab898c))
+- **release:** V0.4.1 ([3a537a0](https://github.com/h3js/crossws/commit/3a537a0))
+- Update undocs ([4f1e94b](https://github.com/h3js/crossws/commit/4f1e94b))
+- Update undocs ([8646f89](https://github.com/h3js/crossws/commit/8646f89))
+- **docs:** Add missing backtick ([#169](https://github.com/h3js/crossws/pull/169))
+- Update undocs ([440a088](https://github.com/h3js/crossws/commit/440a088))
+- Update srvx version & usage ([#178](https://github.com/h3js/crossws/pull/178))
+- Update dependencies ([8761d2e](https://github.com/h3js/crossws/commit/8761d2e))
+- Lint ([df7062b](https://github.com/h3js/crossws/commit/df7062b))
+- Fix type issues ([68841e6](https://github.com/h3js/crossws/commit/68841e6))
+- Update uWebSockets.js ([9ce4ce5](https://github.com/h3js/crossws/commit/9ce4ce5))
+- Fix lint issues ([4b1b779](https://github.com/h3js/crossws/commit/4b1b779))
+
+### ❤️ Contributors
+
+- Joseph Lee ([@jclab-joseph](https://github.com/jclab-joseph))
+- Pooya Parsa ([@pi0](https://github.com/pi0))
+- Nick Perez ([@nperez0111](https://github.com/nperez0111))
+- Rijk Van Zanten ([@rijkvanzanten](https://github.com/rijkvanzanten))
+- Sébastien Chopin <seb@nuxt.com>
+- Abeer0 ([@iiio2](https://github.com/iiio2))
+
 ## v0.4.1
 
 [compare changes](https://github.com/h3js/crossws/compare/v0.4.0...v0.4.1)
