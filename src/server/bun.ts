@@ -1,7 +1,7 @@
 import { serve as srvxServe } from "srvx/bun";
 import adapter from "../adapters/bun";
 
-import type { Server, ServerPlugin } from "srvx/types";
+import type { Server, ServerPlugin } from "srvx";
 import type { WSOptions, ServerWithWSOptions } from "./_types";
 
 export function plugin(wsOpts: WSOptions): ServerPlugin {
@@ -23,11 +23,9 @@ export function plugin(wsOpts: WSOptions): ServerPlugin {
     });
 
     server.options.bun ??= {};
-    // @ts-expect-error
     if (server.options.bun.websocket) {
       throw new Error("websocket handlers for bun already set!");
     }
-    // @ts-expect-error
     server.options.bun.websocket = ws.websocket;
   };
 }

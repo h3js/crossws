@@ -1,9 +1,4 @@
-import type {
-  Server,
-  ServerPlugin,
-  ServerOptions,
-  ServerRequest,
-} from "srvx/types";
+import type { Server, ServerPlugin, ServerOptions, ServerRequest } from "srvx";
 
 import type { Hooks } from "../hooks";
 

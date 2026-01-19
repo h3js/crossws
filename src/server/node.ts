@@ -1,7 +1,7 @@
 import { serve as srvxServe, NodeRequest } from "srvx/node";
 import adapter from "../adapters/node";
 
-import type { Server, ServerPlugin } from "srvx/types";
+import type { Server, ServerPlugin } from "srvx";
 import type { WSOptions, ServerWithWSOptions } from "./_types";
 
 export function plugin(wsOpts: WSOptions): ServerPlugin {
@@ -11,9 +11,7 @@ export function plugin(wsOpts: WSOptions): ServerPlugin {
       resolve: wsOpts.resolve,
       ...wsOpts.options?.deno,
     });
-    // @ts-expect-error
     const originalServe = server.serve;
-    // @ts-expect-error
     server.serve = () => {
       server.node?.server!.on("upgrade", (req, socket, head) => {
         ws.handleUpgrade(

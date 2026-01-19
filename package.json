@@ -87,7 +87,7 @@
     "jiti": "^2.4.2",
     "listhen": "^1.9.0",
     "prettier": "^3.5.3",
-    "srvx": "^0.7.1",
+    "srvx": "^0.10.1",
     "typescript": "^5.8.3",
     "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.44.0",
     "unbuild": "^3.5.0",
@@ -107,6 +107,12 @@
   "packageManager": "pnpm@10.11.0",
   "pnpm": {
     "ignoredBuiltDependencies": [
+      "@parcel/watcher",
+      "esbuild",
+      "sharp",
+      "workerd"
+    ],
+    "onlyBuiltDependencies": [
       "@parcel/watcher",
       "esbuild",
       "sharp",

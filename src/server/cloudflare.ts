@@ -1,7 +1,7 @@
 import { serve as srvxServe } from "srvx/cloudflare";
 import adapter from "../adapters/cloudflare";
 
-import type { Server, ServerPlugin } from "srvx/types";
+import type { Server, ServerPlugin } from "srvx";
 import type { WSOptions, ServerWithWSOptions } from "./_types";
 
 export function plugin(wsOpts: WSOptions): ServerPlugin {
