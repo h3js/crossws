@@ -133,6 +133,7 @@ const cloudflareAdapter: Adapter<
       server.addEventListener("close", (event) => {
         peers.delete(peer);
         hooks.callHook("close", peer, event);
+        server.close();
       });
 
       return new Response(null, {
