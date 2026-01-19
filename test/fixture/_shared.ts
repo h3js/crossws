@@ -100,13 +100,11 @@ export function handleDemoRoutes(
 ): Response | undefined {
   const url = new URL(request.url);
   if (url.pathname === "/peers") {
-    return new Response(
-      JSON.stringify({
-        peers: [...ws.peers].flatMap(([namespace, peers]) =>
-          [...peers].map((p) => `${namespace}:${p.id}`),
-        ),
-      }),
-    );
+    return Response.json({
+      peers: [...ws.peers].flatMap(([namespace, peers]) =>
+        [...peers].map((p) => `${namespace}:${p.id}`),
+      ),
+    });
   } else if (url.pathname === "/publish") {
     const topic = url.searchParams.get("topic") || "";
     const message = url.searchParams.get("message") || "";
