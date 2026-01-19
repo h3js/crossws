@@ -123,7 +123,7 @@ const cloudflareAdapter: Adapter<
         hooks.callHook(
           "message",
           peer,
-          new Message(event.data, peer, event as MessageEvent),
+          new Message(event.data, peer, event as unknown as MessageEvent),
         );
       });
       server.addEventListener("error", (event) => {
@@ -134,7 +134,7 @@ const cloudflareAdapter: Adapter<
         peers.delete(peer);
         hooks.callHook("close", peer, event);
       });
-      // eslint-disable-next-line unicorn/no-null
+
       return new Response(null, {
         status: 101,
         webSocket: client as unknown as WebSocket,
@@ -167,7 +167,6 @@ const cloudflareAdapter: Adapter<
       (obj as DurableObjectPub).ctx.acceptWebSocket(server);
       await hooks.callHook("open", peer);
 
-      // eslint-disable-next-line unicorn/no-null
       return new Response(null, {
         status: 101,
         webSocket: client,
@@ -340,7 +339,7 @@ function setAttachedState(ws: AugmentedWebSocket, state: AttachedState) {
 
 declare class DurableObjectPub extends DurableObject {
   public ctx: DurableObject["ctx"];
-  public env: unknown;
+  public env: any;
 }
 
 type AugmentedWebSocket = CF.WebSocket & {

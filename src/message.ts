@@ -124,7 +124,7 @@ export class Message implements Partial<MessageEvent> {
       return (this.#blob = rawData);
     }
     // Fallback to UInt8Array
-    return (this.#blob = new Blob([this.uint8Array()]));
+    return (this.#blob = new Blob([this.uint8Array() as Uint8Array<any>]));
   }
 
   /**

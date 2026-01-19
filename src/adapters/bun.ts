@@ -10,7 +10,10 @@ import { Peer, type PeerContext } from "../peer.ts";
 
 export interface BunAdapter extends AdapterInstance {
   websocket: WebSocketHandler<ContextData>;
-  handleUpgrade(req: Request, server: Server): Promise<Response | undefined>;
+  handleUpgrade(
+    req: Request,
+    server: Server<ContextData>,
+  ): Promise<Response | undefined>;
 }
 
 export interface BunOptions extends AdapterOptions {}
@@ -19,7 +22,7 @@ type ContextData = {
   peer?: BunPeer;
   namespace: string;
   request: Request;
-  server?: Server;
+  server?: Server<ContextData>;
   context: PeerContext;
 };
 
