@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.4.4
+
+[compare changes](https://github.com/h3js/crossws/compare/v0.4.3...v0.4.4)
+
+### 🩹 Fixes
+
+- Use `AbortController` for `StubRequest.signal` ([#175](https://github.com/h3js/crossws/pull/175))
+
+### 🏡 Chore
+
+- Update deps ([9f32424](https://github.com/h3js/crossws/commit/9f32424))
+
+### ❤️ Contributors
+
+- Alessandro De Blasis ([@deblasis](https://github.com/deblasis))
+- Pooya Parsa ([@pi0](https://github.com/pi0))
+
 ## v0.4.3
 
 [compare changes](https://github.com/h3js/crossws/compare/v0.4.2...v0.4.3)
