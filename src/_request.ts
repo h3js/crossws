@@ -2,7 +2,7 @@ export const StubRequest = /* @__PURE__ */ (() => {
   class StubRequest implements Omit<Request, "fetcher" | "cf"> {
     url: string;
 
-    _signal?: AbortSignal;
+    _abortController?: AbortController;
     _headers?: Headers;
     _init?: RequestInit;
 
@@ -29,7 +29,10 @@ export const StubRequest = /* @__PURE__ */ (() => {
     }
 
     get signal() {
-      return (this._signal ??= new AbortController().signal);
+      if (!this._abortController) {
+        this._abortController = new AbortController();
+      }
+      return this._abortController.signal;
     }
 
     get cache() {
@@ -69,7 +72,7 @@ export const StubRequest = /* @__PURE__ */ (() => {
     }
 
     get body() {
-      return null; // eslint-disable-line unicorn/no-null
+      return null;
     }
 
     get bodyUsed() {
