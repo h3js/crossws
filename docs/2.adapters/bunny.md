@@ -78,7 +78,7 @@ See [Bunny.net WebSocket Documentation](https://docs.bunny.net/scripting/websock
 ::
 
 ::read-more
-See [`test/fixture/bunny.ts`](https://github.com/h3js/crossws/blob/main/test/fixture/bunny.ts) for demo and [`src/adapters/bunny.ts`](https://github.com/h3js/crossws/blob/main/src/adapters/bunny.ts) for implementation.
+See [`src/adapters/bunny.ts`](https://github.com/h3js/crossws/blob/main/src/adapters/bunny.ts) for implementation.
 ::
 
 ````
