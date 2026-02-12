@@ -49,8 +49,7 @@ const bunnyAdapter: Adapter<BunnyAdapter, BunnyOptions> = (options = {}) => {
   return {
     ...adapterUtils(globalPeers),
     handleUpgrade: async (request: Request & { upgradeWebSocket?: any }) => {
-      const { endResponse, context, namespace } =
-        await hooks.upgrade(request);
+      const { endResponse, context, namespace } = await hooks.upgrade(request);
       if (endResponse) {
         return endResponse;
       }
