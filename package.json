@@ -10,6 +10,7 @@
   "exports": {
     ".": "./dist/index.mjs",
     "./adapters/bun": "./dist/adapters/bun.mjs",
+    "./adapters/bunny": "./dist/adapters/bunny.mjs",
     "./adapters/deno": "./dist/adapters/deno.mjs",
     "./adapters/cloudflare": "./dist/adapters/cloudflare.mjs",
     "./adapters/sse": "./dist/adapters/sse.mjs",
