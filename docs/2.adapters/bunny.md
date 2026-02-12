@@ -7,7 +7,12 @@ icon: simple-icons:bunny
 
 > Manually integrate crossws with Bunny.net Edge Scripting.
 
+> [!TIP]
+> You can use `serve` function from `crossws/server/bunny` to **automatically** integrate crossws with Bunny.net!
+
 [Bunny.net Edge Scripting](https://docs.bunny.net/scripting/websockets) supports WebSockets to deliver low-latency, bidirectional communication between your applications and users across the globe.
+
+## Usage
 
 To integrate crossws with Bunny.net Edge Scripting, you need to check for the `upgrade` header and then call `handleUpgrade` method from the adapter passing the incoming request object. The returned value is the server upgrade response.
 

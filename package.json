@@ -17,6 +17,7 @@
     "./adapters/node": "./dist/adapters/node.mjs",
     "./adapters/uws": "./dist/adapters/uws.mjs",
     "./server/bun": "./dist/server/bun.mjs",
+    "./server/bunny": "./dist/server/bunny.mjs",
     "./server/deno": "./dist/server/deno.mjs",
     "./server/node": "./dist/server/node.mjs",
     "./server": {
