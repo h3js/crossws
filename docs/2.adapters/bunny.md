@@ -47,6 +47,39 @@ BunnySDK.net.http.serve(async (request: Request) => {
 });
 ```
 
+## Protocol Negotiation
+
+You can control WebSocket protocol negotiation through the `upgrade` hook by setting the `sec-websocket-protocol` header. This is useful for implementing authorization or selecting specific subprotocols based on the request:
+
+```ts
+const ws = crossws({
+  hooks: {
+    upgrade(req) {
+      // Check for authorization token
+      const token = req.headers.get("authorization");
+      if (!token) {
+        return new Response("Unauthorized", { status: 401 });
+      }
+
+      // Negotiate protocol based on client request
+      const requestedProtocol = req.headers.get("sec-websocket-protocol");
+      const supportedProtocols = ["graphql-ws", "graphql-transport-ws"];
+
+      const protocol = requestedProtocol
+        ?.split(",")
+        .map((p) => p.trim())
+        .find((p) => supportedProtocols.includes(p));
+
+      return {
+        headers: {
+          "sec-websocket-protocol": protocol || "",
+        },
+      };
+    },
+  },
+});
+```
+
 ## Options
 
 The Bunny adapter supports the following options:
@@ -54,6 +87,9 @@ The Bunny adapter supports the following options:
 ### `protocol`
 
 The WebSocket subprotocol to use for the connection.
+
+> [!NOTE]
+> This can be overridden by setting the `sec-websocket-protocol` header in the `upgrade` hook for dynamic protocol negotiation.
 
 ```ts
 const ws = crossws({
