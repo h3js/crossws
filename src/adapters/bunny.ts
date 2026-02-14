@@ -125,6 +125,12 @@ class BunnyPeer extends Peer<{
   context: PeerContext;
   namespace: string;
 }> {
+  override get remoteAddress() {
+    return this._internal.request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      this._internal.request.headers.get("x-real-ip") ||
+      undefined;
+  }
+
   send(data: unknown) {
     return this._internal.ws.send(toBufferLike(data));
   }
