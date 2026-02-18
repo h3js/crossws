@@ -1,4 +1,4 @@
-import { serve as srvxServe } from "srvx";
+import { serve as srvxServe } from "srvx/bunny";
 import adapter from "../adapters/bunny";
 
 import type { Server, ServerPlugin } from "srvx";
