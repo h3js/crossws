@@ -48,10 +48,13 @@ const bunnyAdapter: Adapter<BunnyAdapter, BunnyOptions> = (options = {}) => {
   const globalPeers = new Map<string, Set<BunnyPeer>>();
   return {
     ...adapterUtils(globalPeers),
-    handleUpgrade: async (
-      request: Request & { upgradeWebSocket?: any },
-      denoInfo: { remoteAddr?: Deno.NetAddr } = {},
-    ) => {
+    handleUpgrade: async (request: Request & { upgradeWebSocket?: any }) => {
+      if (!request.upgradeWebSocket || typeof request.upgradeWebSocket !== "function") {
+        throw new Error(
+          "[crossws] Bunny adapter requires the request to have an upgradeWebSocket method.",
+        );
+      }
+
       const { endResponse, context, namespace, upgradeHeaders } =
         await hooks.upgrade(request);
       if (endResponse) {
@@ -65,37 +68,6 @@ const bunnyAdapter: Adapter<BunnyAdapter, BunnyOptions> = (options = {}) => {
 
       const negotiatedProtocol =
         headers.get("sec-websocket-protocol") ?? options.protocol;
-
-      // Fallback to Deno upgrade for local development
-      if (!request.upgradeWebSocket && typeof Deno !== "undefined") {
-        const upgrade = Deno.upgradeWebSocket(request, {
-          protocol: negotiatedProtocol ?? "",
-        });
-        const peers = getPeers(globalPeers, namespace);
-        const peer = new BunnyPeer({
-          ws: upgrade.socket,
-          request,
-          namespace,
-          remoteAddress: denoInfo.remoteAddr?.hostname,
-          peers,
-          context,
-        });
-        peers.add(peer);
-        upgrade.socket.addEventListener("open", () => {
-          hooks.callHook("open", peer);
-        });
-        upgrade.socket.addEventListener("message", (event) => {
-          hooks.callHook("message", peer, new Message(event.data, peer, event));
-        });
-        upgrade.socket.addEventListener("close", () => {
-          peers.delete(peer);
-          hooks.callHook("close", peer, {});
-        });
-        upgrade.socket.addEventListener("error", (error) => {
-          hooks.callHook("error", peer, new WSError(error));
-        });
-        return upgrade.response;
-      }
 
       // Bunny.net specific upgrade
       const upgradeOptions: { protocol?: string; idleTimeout?: number } = {};
@@ -112,10 +84,7 @@ const bunnyAdapter: Adapter<BunnyAdapter, BunnyOptions> = (options = {}) => {
         Object.keys(upgradeOptions).length > 0 ? upgradeOptions : undefined,
       ) as BunnyUpgradeResponse;
 
-      const remoteAddress =
-        request.headers.get("x-forwarded-for")?.split(",").shift()?.trim() ||
-        request.headers.get("x-real-ip") ||
-        undefined;
+      const remoteAddress = request.headers.get("x-real-ip") || undefined;
 
       const peers = getPeers(globalPeers, namespace);
       const peer = new BunnyPeer({
