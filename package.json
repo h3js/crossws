@@ -91,7 +91,7 @@
     "listhen": "^1.9.0",
     "obuild": "^0.4.20",
     "prettier": "^3.8.1",
-    "srvx": "^0.11.5",
+    "srvx": "^0.11.6",
     "typescript": "^5.9.3",
     "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.57.0",
     "unbuild": "^3.6.1",
