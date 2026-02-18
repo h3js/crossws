@@ -117,8 +117,7 @@ const bunnyAdapter: Adapter<BunnyAdapter, BunnyOptions> = (options = {}) => {
       });
 
       socket.addEventListener("error", (error) => {
-        // Note: on idle timeout Bunny.net will emit both "error" and "close" events,
-        // so the peer will already be deleted when we receive the "error" event.
+        peers.delete(peer);
         hooks.callHook("error", peer, new WSError(error));
       });
 
