@@ -30,14 +30,9 @@ export interface BunnyOptions extends AdapterOptions {
   idleTimeout?: number;
 }
 
-interface BunnyWebSocket extends EventTarget {
-  send(data: string | ArrayBufferLike | Blob | ArrayBufferView): void;
-  close(code?: number, reason?: string): void;
-}
-
 interface BunnyUpgradeResponse {
   response: Response;
-  socket: BunnyWebSocket;
+  socket: WebSocket;
 }
 
 // --- adapter ---
@@ -131,7 +126,7 @@ export default bunnyAdapter;
 // --- peer ---
 
 class BunnyPeer extends Peer<{
-  ws: BunnyWebSocket;
+  ws: WebSocket;
   request: Request;
   namespace: string;
   remoteAddress: string | undefined;
