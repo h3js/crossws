@@ -2,9 +2,9 @@ import { mkdir, writeFile, glob, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { defineBuildConfig } from "obuild/config";
 
-const adapters = ["bun", "cloudflare", "deno", "node", "sse", "uws"];
+const adapters = ["bun", "bunny", "cloudflare", "deno", "node", "sse", "uws"];
 
-const servers = ["bun", "cloudflare", "default", "deno", "node"];
+const servers = ["bun", "bunny", "cloudflare", "default", "deno", "node"];
 
 export default defineBuildConfig({
   entries: [
