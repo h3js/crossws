@@ -5,7 +5,7 @@ import type * as web from "../../types/web.ts";
 import { env as cfGlobalEnv } from "cloudflare:workers";
 import { toBufferLike } from "../utils.ts";
 import { adapterUtils, getPeers } from "../adapter.ts";
-import { AdapterHookable } from "../hooks.ts";
+import { AdapterHookable, type UpgradeContext } from "../hooks.ts";
 import { Message } from "../message.ts";
 import { Peer, type PeerContext } from "../peer.ts";
 import { StubRequest } from "../_request.ts";
@@ -41,9 +41,20 @@ export interface CloudflareOptions extends AdapterOptions {
   instanceName?: string;
 
   /**
+   * Create durable object for each namespace.
+   *
+   * **Note:** This option will be ignored if `resolveDurableStub` is provided.
+   *
+   * **Note:** This option will cause the upgrade hook to run twice!.
+   *
+   * @default false
+   */
+  useNamespaceAsId?: boolean;
+
+  /**
    * Custom function that resolves Durable Object binding to handle the WebSocket upgrade.
    *
-   * **Note:** This option will override `bindingName` and `instanceName`.
+   * **Note:** This option will override `bindingName`, `instanceName` and `useNamespaceAsStubId`.
    */
   resolveDurableStub?: ResolveDurableStub;
 }
@@ -62,14 +73,27 @@ const cloudflareAdapter: Adapter<
 
   const resolveDurableStub: ResolveDurableStub =
     opts.resolveDurableStub ||
-    ((_req, env: any, _context): WSDurableObjectStub | undefined => {
+    (async (
+      _req,
+      env: any,
+      _context,
+    ): Promise<WSDurableObjectStub | undefined> => {
       const bindingName = opts.bindingName || "$DurableObject";
       const binding = (env || cfGlobalEnv)[
         bindingName
       ] as CF.DurableObjectNamespace;
       if (binding) {
-        const instanceId = binding.idFromName(opts.instanceName || "crossws");
-        return binding.get(instanceId);
+        let instanceName = opts.instanceName || "crossws";
+
+        if (opts.useNamespaceAsId) {
+          const { namespace } = await hooks.upgrade(
+            _req as unknown as Request,
+            { cf: { runtime: "worker" } },
+          );
+          if (namespace) instanceName = namespace;
+        }
+
+        return binding.get(binding.idFromName(instanceName));
       }
     });
 
@@ -92,7 +116,9 @@ const cloudflareAdapter: Adapter<
 
       // [Fallback] Upgrade request in same Worker
       const { upgradeHeaders, endResponse, context, namespace } =
-        await hooks.upgrade(request as unknown as Request);
+        await hooks.upgrade(request as unknown as Request, {
+          cf: { runtime: "worker" },
+        });
       if (endResponse) {
         return endResponse as unknown as Response;
       }
@@ -148,6 +174,7 @@ const cloudflareAdapter: Adapter<
     handleDurableUpgrade: async (obj, request) => {
       const { upgradeHeaders, endResponse, namespace } = await hooks.upgrade(
         request as Request,
+        { cf: { runtime: "DO" } },
       );
       if (endResponse) {
         return endResponse;
