@@ -54,7 +54,7 @@ export interface CloudflareOptions extends AdapterOptions {
   /**
    * Custom function that resolves Durable Object binding to handle the WebSocket upgrade.
    *
-   * **Note:** This option will override `bindingName`, `instanceName` and `useNamespaceAsStubId`.
+   * **Note:** This option will override `bindingName`, `instanceName` and `useNamespaceAsId`.
    */
   resolveDurableStub?: ResolveDurableStub;
 }

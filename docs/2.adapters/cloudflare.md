@@ -79,10 +79,10 @@ new_classes = ["$DurableObject"]
 See [`test/fixture/cloudflare-durable.ts`](https://github.com/h3js/crossws/blob/main/test/fixture/cloudflare-durable.ts) for demo and [`src/adapters/cloudflare.ts`](https://github.com/h3js/crossws/blob/main/src/adapters/cloudflare.ts) for implementation.
 ::
 
-### Durable Objects
+## Durable Objects
 By default, the cloudflare adapter uses a single Durable Object (DO) to handle ALL requests. This behavior will create a bottleneck since DOs are design to scale horizontally and only handle about 1000 requests/s see [DO message throughput limits](https://developers.cloudflare.com/durable-objects/best-practices/rules-of-durable-objects/#message-throughput-limits). To address this, you can use the `useNamespaceAsId` option along with the [`upgrade() hook`](/guide/hooks) to control which DO handle which request.
 
-There two scenarios for this:
+There are two scenarios for this:
 
 1. You only enable `useNamespaceAsId`. In this case, a DO will be created to handle the request based on the `URL().pathname`.
 
@@ -98,7 +98,7 @@ There two scenarios for this:
 >};
 >```
 
-### Adapter options
+## Adapter options
 
 > [!NOTE]
 > By default, crossws uses the durable object class `$DurableObject` from `env` with an instance named `crossws`.
@@ -106,5 +106,5 @@ There two scenarios for this:
 
 - `bindingName`: Durable Object binding name from environment (default: `$DurableObject`).
 - `instanceName`: Durable Object instance name (default: `crossws`).
-- `useNamespaceAsId`: When this is set to `true`, each peer namespace will have their its own Durable Object (default: false).
+- `useNamespaceAsId`: When set to `true`, each peer namespace gets its own Durable Object (default: `false`).
 - `resolveDurableStub`: Custom function that resolves Durable Object binding to handle the WebSocket upgrade. This option will override `bindingName` and `instanceName`.
