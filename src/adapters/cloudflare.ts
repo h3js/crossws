@@ -19,6 +19,7 @@ type ResolveDurableStub = (
   req: CF.Request | undefined,
   env: unknown,
   context: CF.ExecutionContext | undefined,
+  namespace?: string,
 ) => WSDurableObjectStub | undefined | Promise<WSDurableObjectStub | undefined>;
 
 export interface CloudflareOptions extends AdapterOptions {
@@ -71,31 +72,40 @@ const cloudflareAdapter: Adapter<
     Set<CloudflareDurablePeer | CloudflareFallbackPeer>
   >();
 
-  const resolveDurableStub: ResolveDurableStub =
-    opts.resolveDurableStub ||
-    (async (
-      _req,
-      env: any,
-      _context,
-    ): Promise<WSDurableObjectStub | undefined> => {
-      const bindingName = opts.bindingName || "$DurableObject";
-      const binding = (env || cfGlobalEnv)[
-        bindingName
-      ] as CF.DurableObjectNamespace;
-      if (binding) {
-        let instanceName = opts.instanceName || "crossws";
+  const defaultDurableStubResolver: ResolveDurableStub = async (
+    req,
+    env: any,
+    _context,
+    explicitNamespace,
+  ) => {
+    const bindingName = opts.bindingName || "$DurableObject";
+    const binding = (env || cfGlobalEnv)[
+      bindingName
+    ] as CF.DurableObjectNamespace;
 
-        if (opts.useNamespaceAsId) {
-          const { namespace } = await hooks.upgrade(
-            _req as unknown as Request,
-            { cf: { runtime: "worker" } },
-          );
-          if (namespace) instanceName = namespace;
-        }
+    if (!binding) {
+      return undefined;
+    }
 
-        return binding.get(binding.idFromName(instanceName));
+    // Determine the ID name logic:
+    // 1. Use explicitNamespace if provided (e.g. from publish(..., { namespace }))
+    // 2. If useNamespaceAsId is true and we have a request, run the upgrade hook
+    // 3. Fallback to instanceName
+    let instanceName = explicitNamespace || opts.instanceName || "crossws";
+
+    if (!explicitNamespace && opts.useNamespaceAsId && req) {
+      const { namespace } = await hooks.upgrade(req as unknown as Request, {
+        cf: { runtime: "worker" },
+      });
+      if (namespace) {
+        instanceName = namespace;
       }
-    });
+    }
+
+    return binding.get(binding.idFromName(instanceName));
+  };
+  const resolveDurableStub: ResolveDurableStub =
+    opts.resolveDurableStub || defaultDurableStubResolver;
 
   const { publish: durablePublish, ...utils } = adapterUtils(globalPeers);
 
@@ -216,7 +226,13 @@ const cloudflareAdapter: Adapter<
       return durablePublish(topic, data, opts);
     },
     publish: async (topic, data, opts) => {
-      const stub = await resolveDurableStub(undefined, cfGlobalEnv, undefined);
+      const stub = await resolveDurableStub(
+        undefined,
+        cfGlobalEnv,
+        undefined,
+        opts?.namespace,
+      );
+
       if (!stub) {
         throw new Error("[crossws] Durable Object binding cannot be resolved.");
       }
