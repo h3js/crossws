@@ -111,6 +111,7 @@ const cloudflareAdapter: Adapter<
     // Returns an empty Map(). Accessing this object across different requests or Durable Objects on Cloudflare triggers I/O errors,
     // rendering it non-functional in those contexts. Maintained solely for backward compatibility.
     peers: new Map(),
+    getDurablePeers,
     handleUpgrade: async (request, cfEnv, cfCtx) => {
       // Upgrade request with Durable Object binding
       const stub = await resolveDurableStub(
