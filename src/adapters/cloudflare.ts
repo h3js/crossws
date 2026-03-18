@@ -214,6 +214,10 @@ const cloudflareAdapter: Adapter<
     handleDurablePublish: async (_obj, topic, data, opts) => {
       const peers = getDurablePeers(_obj as DurableObjectPub, topic);
       for (const peer of peers) {
+        // single Durable Object with multiple namesapces
+        if (peer.namespace !== opts.namespace) {
+          continue;
+        }
         peer.send(data);
       }
     },
