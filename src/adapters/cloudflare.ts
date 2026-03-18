@@ -216,7 +216,7 @@ const cloudflareAdapter: Adapter<
       const peers = getDurablePeers(_obj as DurableObjectPub, topic);
       for (const peer of peers) {
         // single Durable Object with multiple namespaces
-        if (peer.namespace !== opts.namespace) {
+        if (opts && peer.namespace !== opts.namespace) {
           continue;
         }
         peer.send(data);
@@ -258,7 +258,7 @@ function getDurablePeers(
   const websockets = obj.ctx.getWebSockets() as unknown as AugmentedWebSocket[];
   for (const ws of websockets) {
     const state = getAttachedState(ws);
-    if (topic && state.t && !state.t.has(topic)) {
+    if (topic && !state.t?.has(topic)) {
       continue;
     }
 
