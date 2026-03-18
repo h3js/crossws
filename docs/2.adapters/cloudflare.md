@@ -98,6 +98,9 @@ There are two scenarios for this:
 >};
 >```
 
+> [!WARNING] 
+> When using the Cloudflare adapter, the `peers` property of the adapter is always set to an empty `Map()`. If you need access to the list of connected peers within a DO use the `getDurablePeers()` function instead. `getDurablePeers()` can only be used inside the `$DurableObject` class since it requires the DO instance.
+
 ## Adapter options
 
 > [!NOTE]
