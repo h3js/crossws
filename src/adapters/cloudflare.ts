@@ -450,7 +450,7 @@ export interface CloudflareDurableAdapter extends AdapterInstance {
     obj: DurableObject,
     topic: string,
     data: unknown,
-    opts: any,
+    opts: Record<string, any> & { namespace?: string },
   ) => Promise<void>;
 
   handleDurableClose(
