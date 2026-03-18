@@ -110,4 +110,4 @@ There are two scenarios for this:
 - `bindingName`: Durable Object binding name from environment (default: `$DurableObject`).
 - `instanceName`: Durable Object instance name (default: `crossws`).
 - `useNamespaceAsId`: When set to `true`, each peer namespace gets its own Durable Object (default: `false`).
-- `resolveDurableStub`: Custom function that resolves Durable Object binding to handle the WebSocket upgrade. This option will override `bindingName` and `instanceName`.
+- `resolveDurableStub`: Custom function that resolves Durable Object binding to handle the WebSocket upgrade. This option will override `bindingName`, `useNamespaceAsId`, and `instanceName`.
