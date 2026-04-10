@@ -8,6 +8,8 @@ import type { Peer } from "../src";
 
 const fixtureDir = fileURLToPath(new URL("fixture", import.meta.url));
 
+const nativeWebSocket = globalThis.WebSocket;
+
 const websockets = new Set<WebSocket>();
 afterEach(() => {
   for (const ws of websockets) {
@@ -21,12 +23,17 @@ export function wsConnect(
   opts?: { skip?: number; headers?: HeadersInit },
 ) {
   const inspector = new WebSocketInspector();
-  const _WebSocket = globalThis.WebSocket || WebSocketUndici;
+  // Prefer undici's WebSocket so the inspector dispatcher intercepts the
+  // upgrade; the native global ignores `dispatcher`. Respect stubs set by
+  // tests (e.g. SSE replaces globalThis.WebSocket).
+  const _WebSocket: any =
+    globalThis.WebSocket === nativeWebSocket
+      ? WebSocketUndici
+      : globalThis.WebSocket || WebSocketUndici;
   const ws = new _WebSocket(url, {
-    // @ts-expect-error
     headers: opts?.headers,
     dispatcher: inspector,
-  });
+  }) as WebSocket;
   ws.binaryType = "arraybuffer";
 
   websockets.add(ws);
@@ -114,45 +121,57 @@ class WebSocketInspector extends Agent {
   error?: Error;
 
   _normalizeHeaders(
-    rawHeaders: string[] | Buffer[] | null,
+    headers: Record<string, string | string[]> | null,
   ): Record<string, string> {
-    const headerEntries: [string, string][] = [];
-    for (let i = 0; i < rawHeaders!.length; i += 2) {
-      headerEntries.push([
-        decodeURIComponent(rawHeaders![i]!.toString()).toLowerCase(),
-        decodeURIComponent(rawHeaders![i + 1]!.toString()),
-      ]);
+    const out: Record<string, string> = {};
+    if (!headers) return out;
+    for (const [key, value] of Object.entries(headers)) {
+      const joined = Array.isArray(value) ? value.join(", ") : value;
+      out[decodeURIComponent(key).toLowerCase()] = decodeURIComponent(joined);
     }
-    return Object.fromEntries(headerEntries);
+    return out;
   }
 
   override dispatch(opts: any, handler: any): boolean {
-    return super.dispatch(opts, {
-      ...handler,
-      onHeaders: (
-        statusCode: number,
-        headers: Buffer[] | null,
-        resume: () => void,
-        statusText: string,
-      ) => {
-        this.status = statusCode;
-        this.statusText = statusText;
-        this.headers = this._normalizeHeaders(headers);
-        return handler.onHeaders(statusCode, headers, resume, statusText);
-      },
-      onError: (error: Error) => {
-        this.error = error;
-        return handler.onError(error);
-      },
-      onUpgrade: (
-        statusCode: number,
-        rawHeaders: Buffer[] | null = [],
-        socket: unknown,
-      ) => {
-        this.headers = this._normalizeHeaders(rawHeaders);
-        return handler.onUpgrade(statusCode, rawHeaders, socket);
-      },
-    });
+    // eslint-disable-next-line @typescript-eslint/no-this-alias, unicorn/no-this-assignment
+    const inspector = this;
+    const wrapped = Object.create(handler);
+    wrapped.onResponseStart = function (
+      controller: any,
+      statusCode: number,
+      headers: Record<string, string | string[]>,
+      statusText: string,
+    ) {
+      inspector.status = statusCode;
+      inspector.statusText = statusText;
+      inspector.headers = inspector._normalizeHeaders(headers);
+      return handler.onResponseStart?.(
+        controller,
+        statusCode,
+        headers,
+        statusText,
+      );
+    };
+    wrapped.onResponseError = function (controller: any, error: Error) {
+      inspector.error = error;
+      return handler.onResponseError?.(controller, error);
+    };
+    wrapped.onRequestUpgrade = function (
+      controller: any,
+      statusCode: number,
+      headers: Record<string, string | string[]>,
+      socket: unknown,
+    ) {
+      inspector.status = statusCode;
+      inspector.headers = inspector._normalizeHeaders(headers);
+      return handler.onRequestUpgrade?.(
+        controller,
+        statusCode,
+        headers,
+        socket,
+      );
+    };
+    return super.dispatch(opts, wrapped);
   }
 }
 

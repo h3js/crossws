@@ -93,7 +93,7 @@
     "typescript": "^6.0.2",
     "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.57.0",
     "unbuild": "^3.6.1",
-    "undici": "^7",
+    "undici": "^8.0.2",
     "vitest": "^4.1.4",
     "wrangler": "^4.81.1",
     "ws": "^8.20.0"
