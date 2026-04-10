@@ -76,6 +76,9 @@ export class AdapterHookable {
         return { context, namespace, endResponse: res };
       }
       if ((res as { handled?: boolean }).handled) {
+        // Hook took ownership of the socket — any `headers` returned
+        // alongside `handled` are ignored since the adapter skips its
+        // own upgrade and no response will be written from here.
         return { context, namespace, handled: true };
       }
       if (res.headers) {

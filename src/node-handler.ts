@@ -1,5 +1,6 @@
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
+import type { ServerRequest } from "srvx";
 import type { Hooks } from "./hooks.ts";
 
 /**
@@ -45,8 +46,12 @@ export function fromNodeUpgradeHandler(
 ): Partial<Hooks> {
   return {
     async upgrade(request) {
-      const node = (request as { runtime?: { node?: NodeUpgradeCtx } }).runtime
-        ?.node;
+      const node = (request as ServerRequest).runtime?.node as
+        | {
+            req: IncomingMessage;
+            upgrade?: { socket: Duplex; head: Buffer };
+          }
+        | undefined;
       if (!node?.upgrade) {
         throw new Error(
           "[crossws] `fromNodeUpgradeHandler` must be mounted via `crossws/server/node`.",
@@ -56,9 +61,4 @@ export function fromNodeUpgradeHandler(
       return { handled: true };
     },
   };
-}
-
-interface NodeUpgradeCtx {
-  req: IncomingMessage;
-  upgrade?: { socket: Duplex; head: Buffer };
 }
