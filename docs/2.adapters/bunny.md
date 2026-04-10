@@ -1,6 +1,6 @@
 ````mdc
 ---
-icon: simple-icons:bunny
+icon: mdi:rabbit
 ---
 
 # Bunny
