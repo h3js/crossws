@@ -1,6 +1,13 @@
 import type { Hooks } from "./hooks.ts";
 import type { Peer } from "./peer.ts";
 
+// 1 MiB — generous enough for typical chatty clients while bounding memory
+// consumption of stalled-upstream peers.
+const DEFAULT_MAX_BUFFER_SIZE = 1024 * 1024;
+
+// 10 seconds — aligns with common reverse-proxy defaults (nginx, haproxy).
+const DEFAULT_CONNECT_TIMEOUT = 10_000;
+
 export interface WebSocketProxyOptions {
   /**
    * Target WebSocket URL to proxy to (`ws://` or `wss://`).
@@ -16,6 +23,24 @@ export interface WebSocketProxyOptions {
    * @default true
    */
   forwardProtocol?: boolean;
+
+  /**
+   * Maximum number of bytes buffered per peer while the upstream connection
+   * is still opening. If exceeded, the peer is closed with code `1009`
+   * (Message Too Big). Set to `0` to disable the limit.
+   *
+   * @default 1048576 (1 MiB)
+   */
+  maxBufferSize?: number;
+
+  /**
+   * Milliseconds to wait for the upstream WebSocket handshake to complete.
+   * If the upstream does not open within the timeout, the peer is closed
+   * with code `1011`. Set to `0` to disable the timeout.
+   *
+   * @default 10000
+   */
+  connectTimeout?: number;
 }
 
 /**
@@ -60,15 +85,33 @@ export function createWebSocketProxy(
       const ws = new WebSocket(url, protocols);
       ws.binaryType = "arraybuffer";
 
-      const state: UpstreamState = { ws, buffer: [], open: false };
+      const state: UpstreamState = {
+        ws,
+        buffer: [],
+        bufferSize: 0,
+        open: false,
+        timeout: undefined,
+      };
       upstreams.set(peer.id, state);
 
+      const timeoutMs =
+        options.connectTimeout ?? DEFAULT_CONNECT_TIMEOUT;
+      if (timeoutMs > 0) {
+        state.timeout = setTimeout(() => {
+          if (upstreams.get(peer.id) !== state || state.open) return;
+          _cleanupState(upstreams, peer.id, state);
+          _safeClose(peer, 1011, "Upstream connect timeout");
+        }, timeoutMs);
+      }
+
       ws.addEventListener("open", () => {
+        _clearTimeout(state);
         state.open = true;
         for (const data of state.buffer) {
-          ws.send(data as Parameters<WebSocket["send"]>[0]);
+          ws.send(data);
         }
         state.buffer.length = 0;
+        state.bufferSize = 0;
       });
 
       ws.addEventListener("message", (event) => {
@@ -76,12 +119,17 @@ export function createWebSocketProxy(
       });
 
       ws.addEventListener("close", (event) => {
-        upstreams.delete(peer.id);
-        _safeClose(peer, event.code, event.reason);
+        // Ignore if the state was already cleaned up (e.g. proxy-initiated
+        // close or buffer limit); we only propagate unsolicited upstream
+        // closures to the client.
+        if (upstreams.get(peer.id) !== state) return;
+        _cleanupState(upstreams, peer.id, state);
+        _safeClose(peer, _remapCloseCode(event.code), event.reason);
       });
 
       ws.addEventListener("error", () => {
-        upstreams.delete(peer.id);
+        if (upstreams.get(peer.id) !== state) return;
+        _cleanupState(upstreams, peer.id, state);
         _safeClose(peer, 1011, "Upstream error");
       });
     },
@@ -94,18 +142,27 @@ export function createWebSocketProxy(
           ? message.rawData
           : message.uint8Array();
       if (state.open) {
-        state.ws.send(data as Parameters<WebSocket["send"]>[0]);
-      } else {
-        state.buffer.push(data);
+        state.ws.send(data);
+        return;
       }
+      const size = typeof data === "string" ? data.length : data.byteLength;
+      const limit = options.maxBufferSize ?? DEFAULT_MAX_BUFFER_SIZE;
+      if (limit > 0 && state.bufferSize + size > limit) {
+        _cleanupState(upstreams, peer.id, state);
+        _safeClose(peer, 1009, "Proxy buffer limit exceeded");
+        return;
+      }
+      state.buffer.push(data);
+      state.bufferSize += size;
     },
 
     close(peer, details) {
       const state = upstreams.get(peer.id);
       if (!state) return;
+      _clearTimeout(state);
       upstreams.delete(peer.id);
       try {
-        state.ws.close(details.code, details.reason);
+        state.ws.close(_remapCloseCode(details.code), details.reason);
       } catch {
         // ignore invalid code/reason
       }
@@ -114,9 +171,10 @@ export function createWebSocketProxy(
     error(peer) {
       const state = upstreams.get(peer.id);
       if (!state) return;
+      _clearTimeout(state);
       upstreams.delete(peer.id);
       try {
-        state.ws.close();
+        state.ws.close(1011, "Peer error");
       } catch {
         // ignore
       }
@@ -128,8 +186,31 @@ export function createWebSocketProxy(
 
 interface UpstreamState {
   ws: WebSocket;
-  buffer: unknown[];
+  buffer: Array<string | Uint8Array>;
+  bufferSize: number;
   open: boolean;
+  timeout: ReturnType<typeof setTimeout> | undefined;
+}
+
+function _cleanupState(
+  upstreams: Map<string, UpstreamState>,
+  id: string,
+  state: UpstreamState,
+): void {
+  _clearTimeout(state);
+  upstreams.delete(id);
+  try {
+    state.ws.close();
+  } catch {
+    // ignore
+  }
+}
+
+function _clearTimeout(state: UpstreamState): void {
+  if (state.timeout !== undefined) {
+    clearTimeout(state.timeout);
+    state.timeout = undefined;
+  }
 }
 
 function _resolveTarget(
@@ -159,4 +240,13 @@ function _safeClose(peer: Peer, code?: number, reason?: string): void {
   } catch {
     // ignore
   }
+}
+
+// Reserved codes must never appear in an outbound close frame.
+// 1005 (no status), 1006 (abnormal), 1015 (TLS failure) get remapped.
+function _remapCloseCode(code?: number): number | undefined {
+  if (code === undefined) return undefined;
+  if (code === 1005) return 1000;
+  if (code === 1006 || code === 1015) return 1011;
+  return code;
 }
