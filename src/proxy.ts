@@ -147,7 +147,10 @@ function _resolveProtocols(
   if (forwardProtocol === false) return;
   const header = peer.request?.headers.get("sec-websocket-protocol");
   if (!header) return;
-  return header.split(",").map((p) => p.trim()).filter(Boolean);
+  return header
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
 }
 
 function _safeClose(peer: Peer, code?: number, reason?: string): void {
