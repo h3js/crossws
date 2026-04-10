@@ -100,3 +100,49 @@ server.listen(3001, () => {
 ::read-more
 See [`test/fixture/node-uws.ts`](https://github.com/h3js/crossws/blob/main/test/fixture/node-uws.ts) for demo and [`src/adapters/node-uws.ts`](https://github.com/h3js/crossws/blob/main/src/adapters/node-uws.ts) for implementation.
 ::
+
+## Socket.IO
+
+[Socket.IO](https://socket.io/) speaks two transports: a WebSocket upgrade and an HTTP long-polling fallback served under `/socket.io/`. Both can be routed through crossws by combining `fromNodeUpgradeHandler` with srvx's `fetchNodeHandler` helper to forward the polling path (and the optional client bundle at `/socket.io/socket.io.js`) to socket.io's own Node-style `(req, res)` listener:
+
+```ts
+import { createServer } from "node:http";
+import { Server as SocketIOServer } from "socket.io";
+import { fromNodeUpgradeHandler } from "crossws/adapters/node";
+import { serve } from "crossws/server/node";
+import { fetchNodeHandler } from "srvx/node";
+
+// Attach socket.io to a throwaway http.Server — it never `.listen()`s,
+// but the dummy server now holds socket.io's own `request` listener,
+// which handles the client bundle AND delegates polling to engine.io.
+const dummyServer = createServer();
+const io = new SocketIOServer(dummyServer, { serveClient: true });
+const [socketIoRequestListener] = dummyServer.listeners("request");
+
+io.on("connection", (socket) => {
+  socket.emit("welcome", { id: socket.id });
+  socket.on("message", (text) => io.emit("message", { from: socket.id, text }));
+});
+
+const server = serve({
+  port: 3000,
+  async fetch(req) {
+    const url = new URL(req.url);
+    if (url.pathname.startsWith("/socket.io/")) {
+      return fetchNodeHandler(socketIoRequestListener, req);
+    }
+    return new Response("ok");
+  },
+  websocket: fromNodeUpgradeHandler((req, socket, head) => {
+    io.engine.handleUpgrade(req, socket, head);
+  }),
+});
+
+await server.ready();
+```
+
+If you only need the WebSocket transport, force the client to skip polling with `io(url, { transports: ["websocket"] })` and you can drop the `fetch`-side delegation entirely.
+
+::read-more
+See [`examples/socket.io`](https://github.com/h3js/crossws/tree/main/examples/socket.io) for a runnable demo including a browser client.
+::
