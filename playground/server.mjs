@@ -28,8 +28,5 @@ serve({
   fetch: () =>
     fetch(
       "https://raw.githubusercontent.com/h3js/crossws/refs/heads/main/playground/public/index.html",
-    ).then(
-      (res) =>
-        new Response(res.body, { headers: { "Content-Type": "text/html" } }),
-    ),
+    ).then((res) => new Response(res.body, { headers: { "Content-Type": "text/html" } })),
 });

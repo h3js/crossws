@@ -44,28 +44,21 @@ const bunnyAdapter: Adapter<BunnyAdapter, BunnyOptions> = (options = {}) => {
   return {
     ...adapterUtils(globalPeers),
     handleUpgrade: async (request: Request & { upgradeWebSocket?: any }) => {
-      if (
-        !request.upgradeWebSocket ||
-        typeof request.upgradeWebSocket !== "function"
-      ) {
+      if (!request.upgradeWebSocket || typeof request.upgradeWebSocket !== "function") {
         throw new Error(
           "[crossws] Bunny adapter requires the request to have an upgradeWebSocket method.",
         );
       }
 
-      const { endResponse, context, namespace, upgradeHeaders } =
-        await hooks.upgrade(request);
+      const { endResponse, context, namespace, upgradeHeaders } = await hooks.upgrade(request);
       if (endResponse) {
         return endResponse;
       }
 
       const headers =
-        upgradeHeaders instanceof Headers
-          ? upgradeHeaders
-          : new Headers(upgradeHeaders);
+        upgradeHeaders instanceof Headers ? upgradeHeaders : new Headers(upgradeHeaders);
 
-      const negotiatedProtocol =
-        headers.get("sec-websocket-protocol") ?? options.protocol;
+      const negotiatedProtocol = headers.get("sec-websocket-protocol") ?? options.protocol;
 
       // Bunny.net specific upgrade
       const upgradeOptions: { protocol?: string; idleTimeout?: number } = {};

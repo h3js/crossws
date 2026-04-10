@@ -4,7 +4,6 @@ import { execa, type ResultPromise as ExecaRes } from "execa";
 import { fileURLToPath } from "node:url";
 import { getRandomPort, waitForPort } from "get-port-please";
 import { wsTests } from "./tests";
-import type { Peer } from "../src";
 
 const fixtureDir = fileURLToPath(new URL("fixture", import.meta.url));
 
@@ -18,10 +17,7 @@ afterEach(() => {
   websockets.clear();
 });
 
-export function wsConnect(
-  url: string,
-  opts?: { skip?: number; headers?: HeadersInit },
-) {
+export function wsConnect(url: string, opts?: { skip?: number; headers?: HeadersInit }) {
   const inspector = new WebSocketInspector();
   // Prefer undici's WebSocket so the inspector dispatcher intercepts the
   // upgrade; the native global ignores `dispatcher`. Respect stubs set by
@@ -39,9 +35,7 @@ export function wsConnect(
   websockets.add(ws);
 
   const send = async (data: any): Promise<any> => {
-    ws.send(
-      typeof data === "string" ? data : JSON.stringify({ message: data }),
-    );
+    ws.send(typeof data === "string" ? data : JSON.stringify({ message: data }));
   };
 
   const messages: unknown[] = [];
@@ -94,7 +88,7 @@ export function wsConnect(
     error: undefined as Error | undefined,
   };
 
-  const connectPromise = new Promise((resolve, reject) => {
+  const connectPromise = new Promise((resolve) => {
     ws.addEventListener("open", () => resolve(res));
     ws.addEventListener("error", (error) => {
       // @ts-expect-error
@@ -120,9 +114,7 @@ class WebSocketInspector extends Agent {
   headers?: Record<string, string>;
   error?: Error;
 
-  _normalizeHeaders(
-    headers: Record<string, string | string[]> | null,
-  ): Record<string, string> {
+  _normalizeHeaders(headers: Record<string, string | string[]> | null): Record<string, string> {
     const out: Record<string, string> = {};
     if (!headers) return out;
     for (const [key, value] of Object.entries(headers)) {
@@ -144,12 +136,7 @@ class WebSocketInspector extends Agent {
       inspector.status = statusCode;
       inspector.statusText = statusText;
       inspector.headers = inspector._normalizeHeaders(headers);
-      return handler.onResponseStart?.(
-        controller,
-        statusCode,
-        headers,
-        statusText,
-      );
+      return handler.onResponseStart?.(controller, statusCode, headers, statusText);
     };
     wrapped.onResponseError = function (controller: any, error: Error) {
       inspector.error = error;
@@ -163,12 +150,7 @@ class WebSocketInspector extends Agent {
     ) {
       inspector.status = statusCode;
       inspector.headers = inspector._normalizeHeaders(headers);
-      return handler.onRequestUpgrade?.(
-        controller,
-        statusCode,
-        headers,
-        socket,
-      );
+      return handler.onRequestUpgrade?.(controller, statusCode, headers, socket);
     };
     return super.dispatch(opts, wrapped);
   }

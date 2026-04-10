@@ -53,10 +53,7 @@ export class Message implements Partial<MessageEvent> {
       return (this.#uint8Array = rawData);
     }
     // ArrayBuffer
-    if (
-      rawData instanceof ArrayBuffer ||
-      rawData instanceof SharedArrayBuffer
-    ) {
+    if (rawData instanceof ArrayBuffer || rawData instanceof SharedArrayBuffer) {
       this.#arrayBuffer = rawData;
       return (this.#uint8Array = new Uint8Array(rawData));
     }
@@ -80,9 +77,7 @@ export class Message implements Partial<MessageEvent> {
         rawData.byteLength,
       ));
     }
-    throw new TypeError(
-      `Unsupported message type: ${Object.prototype.toString.call(rawData)}`,
-    );
+    throw new TypeError(`Unsupported message type: ${Object.prototype.toString.call(rawData)}`);
   }
 
   /**
@@ -98,10 +93,7 @@ export class Message implements Partial<MessageEvent> {
     }
     const rawData = this.rawData;
     // Use as-is
-    if (
-      rawData instanceof ArrayBuffer ||
-      rawData instanceof SharedArrayBuffer
-    ) {
+    if (rawData instanceof ArrayBuffer || rawData instanceof SharedArrayBuffer) {
       return (this.#arrayBuffer = rawData);
     }
     // Fallback to UInt8Array
@@ -170,9 +162,7 @@ export class Message implements Partial<MessageEvent> {
         return this.blob();
       }
       case "nodebuffer": {
-        return globalThis.Buffer
-          ? Buffer.from(this.uint8Array())
-          : this.uint8Array();
+        return globalThis.Buffer ? Buffer.from(this.uint8Array()) : this.uint8Array();
       }
       case "uint8array": {
         return this.uint8Array();

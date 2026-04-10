@@ -96,17 +96,10 @@ export abstract class Peer<Internal extends AdapterInternal = AdapterInternal> {
   }
 
   /** Send a message to the peer. */
-  abstract send(
-    data: unknown,
-    options?: { compress?: boolean },
-  ): number | void | undefined;
+  abstract send(data: unknown, options?: { compress?: boolean }): number | void | undefined;
 
   /** Send message to subscribes of topic */
-  abstract publish(
-    topic: string,
-    data: unknown,
-    options?: { compress?: boolean },
-  ): void;
+  abstract publish(topic: string, data: unknown, options?: { compress?: boolean }): void;
 
   // --- inspect ---
 

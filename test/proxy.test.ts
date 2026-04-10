@@ -42,8 +42,7 @@ describe("createWebSocketProxy", () => {
             return;
           }
           if (text === "type") {
-            const kind =
-              typeof message.rawData === "string" ? "text" : "binary";
+            const kind = typeof message.rawData === "string" ? "text" : "binary";
             peer.send(`type:${kind}`);
             return;
           }
@@ -60,9 +59,7 @@ describe("createWebSocketProxy", () => {
     upstreamServer.on("upgrade", upstream.handleUpgrade);
     const upstreamPort = await getRandomPort("localhost");
     upstreamURL = `ws://localhost:${upstreamPort}/`;
-    await new Promise<void>((resolve) =>
-      upstreamServer.listen(upstreamPort, resolve),
-    );
+    await new Promise<void>((resolve) => upstreamServer.listen(upstreamPort, resolve));
     await waitForPort(upstreamPort);
 
     // Proxy server using createWebSocketProxy hooks
@@ -73,9 +70,7 @@ describe("createWebSocketProxy", () => {
     proxyServer.on("upgrade", proxy.handleUpgrade);
     const proxyPort = await getRandomPort("localhost");
     proxyURL = `ws://localhost:${proxyPort}/`;
-    await new Promise<void>((resolve) =>
-      proxyServer.listen(proxyPort, resolve),
-    );
+    await new Promise<void>((resolve) => proxyServer.listen(proxyPort, resolve));
     await waitForPort(proxyPort);
 
     // Proxy server using dynamic target function
@@ -86,9 +81,7 @@ describe("createWebSocketProxy", () => {
     dynamicProxyServer.on("upgrade", dynamicProxy.handleUpgrade);
     const dynamicProxyPort = await getRandomPort("localhost");
     dynamicProxyURL = `ws://localhost:${dynamicProxyPort}/`;
-    await new Promise<void>((resolve) =>
-      dynamicProxyServer.listen(dynamicProxyPort, resolve),
-    );
+    await new Promise<void>((resolve) => dynamicProxyServer.listen(dynamicProxyPort, resolve));
     await waitForPort(dynamicProxyPort);
 
     // Proxy with a small buffer limit pointing at a slow-upgrade path
@@ -102,9 +95,7 @@ describe("createWebSocketProxy", () => {
     limitedProxyServer.on("upgrade", limitedProxy.handleUpgrade);
     const limitedProxyPort = await getRandomPort("localhost");
     limitedProxyURL = `ws://localhost:${limitedProxyPort}/`;
-    await new Promise<void>((resolve) =>
-      limitedProxyServer.listen(limitedProxyPort, resolve),
-    );
+    await new Promise<void>((resolve) => limitedProxyServer.listen(limitedProxyPort, resolve));
     await waitForPort(limitedProxyPort);
 
     // Proxy pointing at a port with nothing listening
@@ -116,9 +107,7 @@ describe("createWebSocketProxy", () => {
     badProxyServer.on("upgrade", badProxy.handleUpgrade);
     const badProxyPort = await getRandomPort("localhost");
     badProxyURL = `ws://localhost:${badProxyPort}/`;
-    await new Promise<void>((resolve) =>
-      badProxyServer.listen(badProxyPort, resolve),
-    );
+    await new Promise<void>((resolve) => badProxyServer.listen(badProxyPort, resolve));
     await waitForPort(badProxyPort);
 
     // Proxy with a small connect timeout pointing at the slow-upgrade path
@@ -132,9 +121,7 @@ describe("createWebSocketProxy", () => {
     timeoutProxyServer.on("upgrade", timeoutProxy.handleUpgrade);
     const timeoutProxyPort = await getRandomPort("localhost");
     timeoutProxyURL = `ws://localhost:${timeoutProxyPort}/`;
-    await new Promise<void>((resolve) =>
-      timeoutProxyServer.listen(timeoutProxyPort, resolve),
-    );
+    await new Promise<void>((resolve) => timeoutProxyServer.listen(timeoutProxyPort, resolve));
     await waitForPort(timeoutProxyPort);
   });
 

@@ -31,35 +31,27 @@ export class AdapterHookable {
         : resolveHooksPromise?.[name];
 
     // In parallel, call global hook and resolve hook implementation
-    return Promise.all([globalPromise, resolvePromise]).then(
-      ([globalRes, hook]) => {
-        const hookResPromise = hook?.(arg1 as any, arg2 as any);
-        return hookResPromise instanceof Promise
-          ? hookResPromise.then((hookRes) => hookRes || globalRes)
-          : hookResPromise || globalRes;
-      },
-    ) as Promise<any>;
+    return Promise.all([globalPromise, resolvePromise]).then(([globalRes, hook]) => {
+      const hookResPromise = hook?.(arg1 as any, arg2 as any);
+      return hookResPromise instanceof Promise
+        ? hookResPromise.then((hookRes) => hookRes || globalRes)
+        : hookResPromise || globalRes;
+    }) as Promise<any>;
   }
 
-  async upgrade(
-    request: Request & { readonly context?: Record<string, unknown> },
-  ): Promise<{
+  async upgrade(request: Request & { readonly context?: Record<string, unknown> }): Promise<{
     context: PeerContext;
     namespace: string;
     upgradeHeaders?: HeadersInit;
     endResponse?: Response;
     handled?: boolean;
   }> {
-    let namespace =
-      this.options.getNamespace?.(request) ?? new URL(request.url).pathname;
+    let namespace = this.options.getNamespace?.(request) ?? new URL(request.url).pathname;
 
     const context = request.context || {};
 
     try {
-      const res = await this.callHook(
-        "upgrade",
-        request as Request & { context?: PeerContext },
-      );
+      const res = await this.callHook("upgrade", request as Request & { context?: PeerContext });
       if (!res) {
         return { context, namespace };
       }
@@ -67,10 +59,7 @@ export class AdapterHookable {
         namespace = (res as { namespace: string }).namespace;
       }
       if ((res as { context?: Record<string, unknown> }).context) {
-        Object.assign(
-          context,
-          (res as { context?: Record<string, unknown> }).context,
-        );
+        Object.assign(context, (res as { context?: Record<string, unknown> }).context);
       }
       if (res instanceof Response) {
         return { context, namespace, endResponse: res };
@@ -105,9 +94,7 @@ export class AdapterHookable {
 
 // --- types ---
 
-export function defineHooks<T extends Partial<Hooks> = Partial<Hooks>>(
-  hooks: T,
-): T {
+export function defineHooks<T extends Partial<Hooks> = Partial<Hooks>>(hooks: T): T {
   return hooks;
 }
 
@@ -157,10 +144,7 @@ export interface Hooks {
   open: (peer: Peer) => MaybePromise<void>;
 
   /** A socket is closed */
-  close: (
-    peer: Peer,
-    details: { code?: number; reason?: string },
-  ) => MaybePromise<void>;
+  close: (peer: Peer, details: { code?: number; reason?: string }) => MaybePromise<void>;
 
   /** An error occurs */
   error: (peer: Peer, error: WSError) => MaybePromise<void>;

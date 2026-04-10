@@ -27,9 +27,7 @@ type ServeHandlerInfo = {
 const denoAdapter: Adapter<DenoAdapter, DenoOptions> = (options = {}) => {
   if (typeof Deno === "undefined") {
     // eslint-disable-next-line unicorn/prefer-type-error
-    throw new Error(
-      "[crossws] Using Deno adapter in an incompatible environment.",
-    );
+    throw new Error("[crossws] Using Deno adapter in an incompatible environment.");
   }
 
   const hooks = new AdapterHookable(options);
@@ -37,8 +35,7 @@ const denoAdapter: Adapter<DenoAdapter, DenoOptions> = (options = {}) => {
   return {
     ...adapterUtils(globalPeers),
     handleUpgrade: async (request, info) => {
-      const { upgradeHeaders, endResponse, context, namespace } =
-        await hooks.upgrade(request);
+      const { upgradeHeaders, endResponse, context, namespace } = await hooks.upgrade(request);
       if (endResponse) {
         return endResponse;
       }

@@ -1,4 +1,4 @@
-import { mkdir, writeFile, glob, rm } from "node:fs/promises";
+import { mkdir, writeFile} from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { defineBuildConfig } from "obuild/config";
 
@@ -38,8 +38,7 @@ export default defineBuildConfig({
       for (const entry of entries) {
         const dst = join(ctx.pkgDir, entry + ".d.ts");
         await mkdir(dirname(dst), { recursive: true });
-        let relativePath =
-          ("..".repeat(entry.split("/").length - 1) || ".") + `/dist/${entry}`;
+        let relativePath = ("..".repeat(entry.split("/").length - 1) || ".") + `/dist/${entry}`;
         if (entry === "websocket") {
           relativePath += "/native";
         } else if (entry === "server") {

@@ -101,9 +101,7 @@ export function createWebSocketProxy(
   target: WebSocketProxyOptions["target"] | WebSocketProxyOptions,
 ): Partial<Hooks> {
   const options: WebSocketProxyOptions =
-    typeof target === "string" ||
-    target instanceof URL ||
-    typeof target === "function"
+    typeof target === "string" || target instanceof URL || typeof target === "function"
       ? { target }
       : target;
 
@@ -213,10 +211,7 @@ export function createWebSocketProxy(
     message(peer, message) {
       const state = upstreams.get(peer.id);
       if (!state) return;
-      const raw =
-        typeof message.rawData === "string"
-          ? message.rawData
-          : message.uint8Array();
+      const raw = typeof message.rawData === "string" ? message.rawData : message.uint8Array();
       if (state.open) {
         try {
           state.ws.send(raw);
@@ -251,10 +246,7 @@ export function createWebSocketProxy(
       _clearTimeout(state);
       upstreams.delete(peer.id);
       try {
-        state.ws.close(
-          _normalizeOutgoingCode(details.code),
-          _truncateReason(details.reason),
-        );
+        state.ws.close(_normalizeOutgoingCode(details.code), _truncateReason(details.reason));
       } catch {
         // ignore invalid code/reason
       }
@@ -305,10 +297,7 @@ function _clearTimeout(state: UpstreamState): void {
   }
 }
 
-function _resolveTarget(
-  target: WebSocketProxyOptions["target"],
-  peer: Peer,
-): URL {
+function _resolveTarget(target: WebSocketProxyOptions["target"], peer: Peer): URL {
   const raw = typeof target === "function" ? target(peer) : target;
   return raw instanceof URL ? raw : new URL(raw);
 }
@@ -323,10 +312,7 @@ function _resolveWsOptions(
   return { headers: resolved };
 }
 
-function _resolveProtocols(
-  peer: Peer,
-  forwardProtocol: boolean | undefined,
-): string[] | undefined {
+function _resolveProtocols(peer: Peer, forwardProtocol: boolean | undefined): string[] | undefined {
   if (forwardProtocol === false) return;
   const header = peer.request?.headers.get("sec-websocket-protocol");
   if (!header) return;
@@ -357,9 +343,7 @@ function _truncateReason(reason?: string): string | undefined {
   if (!reason) return reason;
   const bytes = new TextEncoder().encode(reason);
   if (bytes.length <= 123) return reason;
-  return new TextDecoder("utf-8", { fatal: false }).decode(
-    bytes.subarray(0, 123),
-  );
+  return new TextDecoder("utf-8", { fatal: false }).decode(bytes.subarray(0, 123));
 }
 
 // Upstream close event → peer.close. Reserved pseudo-codes (1005/1006/1015)

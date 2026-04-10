@@ -9,11 +9,7 @@ import { Peer, type PeerContext } from "../peer.ts";
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocketServer as _WebSocketServer } from "ws";
-import type {
-  ServerOptions,
-  WebSocketServer,
-  WebSocket as WebSocketT,
-} from "../../types/ws";
+import type { ServerOptions, WebSocketServer, WebSocket as WebSocketT } from "../../types/ws";
 import { StubRequest } from "../_request.ts";
 
 // --- types ---
@@ -46,9 +42,7 @@ export interface NodeOptions extends AdapterOptions {
 // https://github.com/websockets/ws/blob/master/doc/ws.md
 const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
   if ("Deno" in globalThis || "Bun" in globalThis) {
-    throw new Error(
-      "[crossws] Using Node.js adapter in an incompatible environment.",
-    );
+    throw new Error("[crossws] Using Node.js adapter in an incompatible environment.");
   }
 
   const hooks = new AdapterHookable(options);
@@ -175,11 +169,7 @@ class NodePeer extends Peer<{
     return 0;
   }
 
-  publish(
-    topic: string,
-    data: unknown,
-    options?: { compress?: boolean },
-  ): void {
+  publish(topic: string, data: unknown, options?: { compress?: boolean }): void {
     const dataBuff = toBufferLike(data);
     const isBinary = typeof data !== "string";
     const sendOptions = {
@@ -208,9 +198,7 @@ class NodePeer extends Peer<{
 class NodeReqProxy extends StubRequest {
   constructor(req: IncomingMessage) {
     const host = req.headers["host"] || "localhost";
-    const isSecure =
-      (req.socket as any)?.encrypted ??
-      req.headers["x-forwarded-proto"] === "https";
+    const isSecure = (req.socket as any)?.encrypted ?? req.headers["x-forwarded-proto"] === "https";
     const url = `${isSecure ? "https" : "http"}://${host}${req.url}`;
     super(url, { headers: req.headers as Record<string, string> });
   }

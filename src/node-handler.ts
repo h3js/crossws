@@ -41,9 +41,7 @@ export type NodeUpgradeHandler = (
  * });
  * ```
  */
-export function fromNodeUpgradeHandler(
-  handler: NodeUpgradeHandler,
-): Partial<Hooks> {
+export function fromNodeUpgradeHandler(handler: NodeUpgradeHandler): Partial<Hooks> {
   return {
     async upgrade(request) {
       const node = (request as ServerRequest).runtime?.node as

@@ -8,7 +8,7 @@ const ws = createDemo(uwsAdapter);
 
 const app = App().ws("/*", ws.websocket);
 
-app.get("/*", async (res, req) => {
+app.get("/*", async (res, _req) => {
   let aborted = false;
   res.onAborted(() => {
     aborted = true;

@@ -1,8 +1,4 @@
-import {
-  type Adapter,
-  type AdapterInstance,
-  defineHooks,
-} from "../../src/index.ts";
+import { type Adapter, type AdapterInstance, defineHooks } from "../../src/index.ts";
 
 export const getIndexHTML = (opts?: { sse?: boolean }): Promise<string> =>
   import("./_index.html.ts").then((r) => r.default(opts));
@@ -13,9 +9,7 @@ export function createDemo<T extends Adapter<any, any>>(
 ): ReturnType<T> {
   const hooks = defineHooks({
     open(peer) {
-      peer.send(
-        `Welcome to the server ${peer}! (namespace: ${peer.namespace})`,
-      );
+      peer.send(`Welcome to the server ${peer}! (namespace: ${peer.namespace})`);
       peer.subscribe("chat");
       peer.publish("chat", `${peer} joined!`);
     },
@@ -97,10 +91,7 @@ export function createDemo<T extends Adapter<any, any>>(
   });
 }
 
-export function handleDemoRoutes(
-  ws: AdapterInstance,
-  request: Request,
-): Response | undefined {
+export function handleDemoRoutes(ws: AdapterInstance, request: Request): Response | undefined {
   const url = new URL(request.url);
   if (url.pathname === "/peers") {
     return Response.json({

@@ -1,9 +1,7 @@
 type BufferLike = string | Buffer | Uint8Array | ArrayBuffer;
 
 // https://nodejs.org/api/util.html#utilinspectcustom
-export const kNodeInspect: unique symbol = /*#__PURE__*/ Symbol.for(
-  "nodejs.util.inspect.custom",
-);
+export const kNodeInspect: unique symbol = /*#__PURE__*/ Symbol.for("nodejs.util.inspect.custom");
 
 export function toBufferLike(val: any): BufferLike {
   if (val === undefined || val === null) {
