@@ -74,9 +74,12 @@ const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
     });
     peers.add(peer);
     hooks.callHook("open", peer); // ws is already open
-    ws.on("message", (data: unknown) => {
+    ws.on("message", (data: unknown, isBinary: boolean) => {
       if (Array.isArray(data)) {
         data = Buffer.concat(data);
+      }
+      if (!isBinary && Buffer.isBuffer(data)) {
+        data = data.toString("utf8");
       }
       hooks.callHook("message", peer, new Message(data, peer));
     });
