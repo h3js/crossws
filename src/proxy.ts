@@ -94,8 +94,7 @@ export function createWebSocketProxy(
       };
       upstreams.set(peer.id, state);
 
-      const timeoutMs =
-        options.connectTimeout ?? DEFAULT_CONNECT_TIMEOUT;
+      const timeoutMs = options.connectTimeout ?? DEFAULT_CONNECT_TIMEOUT;
       if (timeoutMs > 0) {
         state.timeout = setTimeout(() => {
           if (upstreams.get(peer.id) !== state || state.open) return;
