@@ -115,7 +115,7 @@ export function createWebSocketProxy(
       });
 
       ws.addEventListener("message", (event) => {
-        peer.send(event.data);
+        _safeSend(peer, event.data);
       });
 
       ws.addEventListener("close", (event) => {
@@ -162,7 +162,10 @@ export function createWebSocketProxy(
       _clearTimeout(state);
       upstreams.delete(peer.id);
       try {
-        state.ws.close(_remapCloseCode(details.code), details.reason);
+        state.ws.close(
+          _remapCloseCode(details.code),
+          _truncateReason(details.reason),
+        );
       } catch {
         // ignore invalid code/reason
       }
@@ -236,10 +239,28 @@ function _resolveProtocols(
 
 function _safeClose(peer: Peer, code?: number, reason?: string): void {
   try {
-    peer.close(code, reason);
+    peer.close(code, _truncateReason(reason));
   } catch {
     // ignore
   }
+}
+
+function _safeSend(peer: Peer, data: unknown): void {
+  try {
+    peer.send(data);
+  } catch {
+    // ignore — peer may already be closed
+  }
+}
+
+// WebSocket close frames cap the reason at 123 UTF-8 bytes.
+function _truncateReason(reason?: string): string | undefined {
+  if (!reason) return reason;
+  const bytes = new TextEncoder().encode(reason);
+  if (bytes.length <= 123) return reason;
+  return new TextDecoder("utf-8", { fatal: false }).decode(
+    bytes.subarray(0, 123),
+  );
 }
 
 // Reserved codes must never appear in an outbound close frame.
