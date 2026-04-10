@@ -22,8 +22,4 @@ export type { ServerWithWSOptions, WSOptions } from "./server/_types.ts";
 export { createWebSocketProxy } from "./proxy.ts";
 export type { WebSocketProxyOptions } from "./proxy.ts";
 
-// Node handler
-export { fromNodeUpgradeHandler } from "./node-handler.ts";
-export type { NodeUpgradeHandler } from "./node-handler.ts";
-
 // Removed from 0.2.x: createCrossWS, Caller, WSRequest, CrossWS

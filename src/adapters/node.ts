@@ -144,6 +144,9 @@ const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
 
 export default nodeAdapter;
 
+export { fromNodeUpgradeHandler } from "../node-handler.ts";
+export type { NodeUpgradeHandler } from "../node-handler.ts";
+
 // --- peer ---
 
 class NodePeer extends Peer<{

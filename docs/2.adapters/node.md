@@ -44,7 +44,7 @@ If you already have a Node.js WebSocket library that exposes a raw `(req, socket
 
 ```ts
 import { WebSocketServer } from "ws";
-import { fromNodeUpgradeHandler } from "crossws";
+import { fromNodeUpgradeHandler } from "crossws/adapters/node";
 import { serve } from "crossws/server/node";
 
 const wss = new WebSocketServer({ noServer: true });
