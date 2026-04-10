@@ -3,12 +3,7 @@ import type { Duplex } from "node:stream";
 import type { Hooks } from "./hooks.ts";
 
 /**
- * A Node.js-style WebSocket upgrade handler, matching the signature of
- * `http.Server`'s `"upgrade"` event listener and libraries like
- * [`ws`](https://github.com/websockets/ws).
- *
- * The handler takes ownership of `socket` for the remainder of the
- * connection's lifetime.
+ * A Node.js `(req, socket, head)` upgrade handler.
  */
 export type NodeUpgradeHandler = (
   req: IncomingMessage,
@@ -17,25 +12,12 @@ export type NodeUpgradeHandler = (
 ) => void | Promise<void>;
 
 /**
- * Wrap a Node.js-style `(req, socket, head)` upgrade handler as a
- * {@link Hooks} object so it can be plugged into crossws.
+ * Wrap a Node.js `(req, socket, head)` upgrade handler as a {@link Hooks}
+ * object that can be mounted via `crossws/server/node`.
  *
- * This is useful when you have an existing Node.js WebSocket library
- * (e.g. `ws`, `socket.io`, `express-ws`) that exposes a raw upgrade
- * handler, and you want to route to it through crossws without giving
- * up crossws's upgrade-time request handling.
- *
- * The returned hooks object only implements `upgrade`: the underlying
- * handler takes full ownership of the socket, so crossws's other
- * lifecycle hooks (`open`, `message`, `close`, `error`) are **not**
- * invoked for connections routed through it. Manage the WebSocket
- * lifecycle inside your own library as usual.
- *
- * > [!NOTE]
- * > Only works on the Node.js runtime. The incoming request must carry
- * > the srvx node runtime context (`request.runtime.node.req` and
- * > `request.runtime.node.upgrade.{socket, head}`), which crossws's
- * > node server plugin provides automatically.
+ * The wrapped handler takes ownership of the socket; crossws's other
+ * lifecycle hooks (`open`/`message`/`close`/`error`) are **not** invoked
+ * for connections routed through it.
  *
  * @example
  * ```ts
@@ -63,27 +45,20 @@ export function fromNodeUpgradeHandler(
 ): Partial<Hooks> {
   return {
     async upgrade(request) {
-      const nodeCtx = (request as { runtime?: { node?: NodeUpgradeRuntime } })
-        .runtime?.node;
-      const req = nodeCtx?.req as IncomingMessage | undefined;
-      const upgrade = nodeCtx?.upgrade;
-      if (!req || !upgrade?.socket) {
+      const node = (request as { runtime?: { node?: NodeUpgradeCtx } }).runtime
+        ?.node;
+      if (!node?.upgrade) {
         throw new Error(
-          "[crossws] `fromNodeUpgradeHandler` requires a Node.js upgrade request. " +
-            "Make sure it is used via the crossws node server plugin so the " +
-            "request carries `runtime.node.upgrade.{socket, head}`.",
+          "[crossws] `fromNodeUpgradeHandler` must be mounted via `crossws/server/node`.",
         );
       }
-      await handler(req, upgrade.socket, upgrade.head ?? Buffer.alloc(0));
+      await handler(node.req, node.upgrade.socket, node.upgrade.head);
       return { handled: true };
     },
   };
 }
 
-interface NodeUpgradeRuntime {
+interface NodeUpgradeCtx {
   req: IncomingMessage;
-  upgrade?: {
-    socket: Duplex;
-    head?: Buffer;
-  };
+  upgrade?: { socket: Duplex; head: Buffer };
 }
