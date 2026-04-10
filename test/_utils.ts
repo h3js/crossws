@@ -129,17 +129,26 @@ class WebSocketInspector extends Agent {
   override dispatch(opts: any, handler: any): boolean {
     return super.dispatch(opts, {
       ...handler,
-      onHeaders: (statusCode, headers, resume, statusText) => {
+      onHeaders: (
+        statusCode: number,
+        headers: Buffer[] | null,
+        resume: () => void,
+        statusText: string,
+      ) => {
         this.status = statusCode;
         this.statusText = statusText;
         this.headers = this._normalizeHeaders(headers);
         return handler.onHeaders(statusCode, headers, resume, statusText);
       },
-      onError: (error) => {
+      onError: (error: Error) => {
         this.error = error;
         return handler.onError(error);
       },
-      onUpgrade: (statusCode, rawHeaders = [], socket) => {
+      onUpgrade: (
+        statusCode: number,
+        rawHeaders: Buffer[] | null = [],
+        socket: unknown,
+      ) => {
         this.headers = this._normalizeHeaders(rawHeaders);
         return handler.onUpgrade(statusCode, rawHeaders, socket);
       },
