@@ -110,10 +110,16 @@ const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
     handleUpgrade: async (nodeReq, socket, head, webRequest) => {
       const request = webRequest || new NodeReqProxy(nodeReq);
 
-      const { upgradeHeaders, endResponse, context, namespace } =
+      const { upgradeHeaders, endResponse, handled, context, namespace } =
         await hooks.upgrade(request);
       if (endResponse) {
         return sendResponse(socket, endResponse);
+      }
+      // Upgrade was performed by the hook (e.g. delegated to an external
+      // node-style handler via `fromNodeUpgradeHandler`). The socket has
+      // been taken over — leave it alone.
+      if (handled) {
+        return;
       }
 
       (nodeReq as AugmentedReq)._request = request;
@@ -137,6 +143,9 @@ const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
 };
 
 export default nodeAdapter;
+
+export { fromNodeUpgradeHandler } from "../node-handler.ts";
+export type { NodeUpgradeHandler } from "../node-handler.ts";
 
 // --- peer ---
 

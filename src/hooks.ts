@@ -48,6 +48,7 @@ export class AdapterHookable {
     namespace: string;
     upgradeHeaders?: HeadersInit;
     endResponse?: Response;
+    handled?: boolean;
   }> {
     let namespace =
       this.options.getNamespace?.(request) ?? new URL(request.url).pathname;
@@ -73,6 +74,12 @@ export class AdapterHookable {
       }
       if (res instanceof Response) {
         return { context, namespace, endResponse: res };
+      }
+      if ((res as { handled?: boolean }).handled) {
+        // Hook took ownership of the socket — any `headers` returned
+        // alongside `handled` are ignored since the adapter skips its
+        // own upgrade and no response will be written from here.
+        return { context, namespace, handled: true };
       }
       if (res.headers) {
         return {
@@ -120,6 +127,10 @@ export interface Hooks {
    * - You can return { headers } to modify the response.
    * - You can return { namespace } to change the pub/sub namespace.
    * - You can return { context } to provide a custom peer context.
+   * - You can return { handled: true } to signal that the upgrade has
+   *   already been performed by the hook (e.g. delegated to an external
+   *   node-style `(req, socket, head)` handler). The adapter will then
+   *   leave the socket alone and skip its own upgrade.
    *
    * @param request
    * @throws {Response}
@@ -129,7 +140,12 @@ export interface Hooks {
       readonly context?: Record<string, unknown>;
     },
   ) => MaybePromise<
-    | { headers?: HeadersInit; namespace?: string; context?: PeerContext }
+    | {
+        headers?: HeadersInit;
+        namespace?: string;
+        context?: PeerContext;
+        handled?: boolean;
+      }
     | Response
     | void
   >;
