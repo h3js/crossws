@@ -69,7 +69,10 @@ export function createDemo<T extends Adapter<any, any>>(
             return new Response("unauthorized", {
               status: 401,
               statusText: "Unauthorized",
-              headers: { "x-error": "unauthorized" },
+              headers: {
+                "x-error": "unauthorized",
+                "www-authenticate": 'Bearer realm="crossws"',
+              },
             });
           },
         };

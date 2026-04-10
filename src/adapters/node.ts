@@ -219,10 +219,7 @@ class NodeReqProxy extends StubRequest {
 async function sendResponse(socket: Duplex, res: Response) {
   const head = [
     `HTTP/1.1 ${res.status || 200} ${res.statusText || ""}`,
-    ...[...res.headers.entries()].map(
-      ([key, value]) =>
-        `${encodeURIComponent(key)}: ${encodeURIComponent(value)}`,
-    ),
+    ...[...res.headers.entries()].map(([key, value]) => `${key}: ${value}`),
   ];
   socket.write(head.join("\r\n") + "\r\n\r\n");
   if (res.body) {

@@ -126,8 +126,7 @@ class WebSocketInspector extends Agent {
     const out: Record<string, string> = {};
     if (!headers) return out;
     for (const [key, value] of Object.entries(headers)) {
-      const joined = Array.isArray(value) ? value.join(", ") : value;
-      out[decodeURIComponent(key).toLowerCase()] = decodeURIComponent(joined);
+      out[key.toLowerCase()] = Array.isArray(value) ? value.join(", ") : value;
     }
     return out;
   }

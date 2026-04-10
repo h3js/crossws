@@ -149,6 +149,7 @@ export function wsTests(getURL: () => string, opts: WSTestOpts): void {
       headers: {
         "content-type": expect.stringMatching(/^text\/plain/),
         "x-error": "unauthorized",
+        "www-authenticate": 'Bearer realm="crossws"',
       },
     });
   });
