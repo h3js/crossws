@@ -1,4 +1,3 @@
-````mdc
 ---
 icon: mdi:rabbit
 ---
