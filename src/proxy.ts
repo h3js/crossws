@@ -8,6 +8,11 @@ const DEFAULT_MAX_BUFFER_SIZE = 1024 * 1024;
 // 10 seconds — aligns with common reverse-proxy defaults (nginx, haproxy).
 const DEFAULT_CONNECT_TIMEOUT = 10_000;
 
+// RFC 7230 `token` grammar — the on-wire form of a WebSocket subprotocol
+// per RFC 6455 §4.1. Used to validate values we echo back in the upgrade
+// response so client-controlled input can't coerce unexpected header content.
+const TOKEN_RE = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
+
 export interface WebSocketProxyOptions {
   /**
    * Target WebSocket URL to proxy to (`ws://` or `wss://`).
@@ -51,6 +56,34 @@ export interface WebSocketProxyOptions {
    * @default globalThis.WebSocket
    */
   WebSocket?: typeof WebSocket;
+
+  /**
+   * Extra headers to send on the upstream handshake. Can be a static
+   * object or a resolver called per peer.
+   *
+   * Useful to forward identity from the incoming request (`cookie`,
+   * `authorization`, `origin`), or to inject a shared secret the
+   * upstream expects.
+   *
+   * > [!NOTE]
+   * > The WHATWG global `WebSocket` constructor does not accept custom
+   * > headers — this option is only honored by `WebSocket` constructors
+   * > that take a third options argument (e.g. `ws`, `undici`). Pass
+   * > one via the {@link WebSocket} option to use it.
+   *
+   * @example
+   * ```ts
+   * createWebSocketProxy({
+   *   target: "wss://backend.example.com",
+   *   WebSocket: WsFromNodeWs,
+   *   headers: (peer) => ({
+   *     cookie: peer.request.headers.get("cookie") ?? "",
+   *     "x-forwarded-for": peer.remoteAddress ?? "",
+   *   }),
+   * });
+   * ```
+   */
+  headers?: HeadersInit | ((peer: Peer) => HeadersInit | undefined | void);
 }
 
 /**
@@ -92,15 +125,42 @@ export function createWebSocketProxy(
       // Accept the first requested subprotocol so the upgrade handshake
       // echoes a value the client expects. Upstream must support it too.
       const accepted = reqProtocol.split(",")[0]!.trim();
+      // Defense-in-depth: only echo RFC 7230 tokens. The Fetch `Headers`
+      // API already rejects CRLF, but restricting to the subprotocol
+      // grammar ensures no other client-controlled bytes can land in a
+      // response header — even under buggy or custom header writers.
+      if (!TOKEN_RE.test(accepted)) {
+        return;
+      }
       return { headers: { "sec-websocket-protocol": accepted } };
     },
 
     open(peer) {
-      const url = _resolveTarget(options.target, peer);
-      const protocols = _resolveProtocols(peer, options.forwardProtocol);
-
-      const ws = new WebSocketCtor(url, protocols);
-      ws.binaryType = "arraybuffer";
+      let ws: WebSocket;
+      try {
+        const url = _resolveTarget(options.target, peer);
+        const protocols = _resolveProtocols(peer, options.forwardProtocol);
+        const wsOptions = _resolveWsOptions(options.headers, peer);
+        // The WHATWG WebSocket constructor only takes (url, protocols);
+        // additional arguments are ignored. Custom clients like `ws` and
+        // `undici` accept a third options object where `headers` is
+        // honored — so always pass it when the user configured headers.
+        ws = wsOptions
+          ? new (WebSocketCtor as unknown as new (
+              url: URL,
+              protocols: string[] | undefined,
+              opts: { headers: HeadersInit },
+            ) => WebSocket)(url, protocols, wsOptions)
+          : new WebSocketCtor(url, protocols);
+        ws.binaryType = "arraybuffer";
+      } catch {
+        // Bad target URL, disallowed scheme, invalid subprotocol token,
+        // or a throwing custom resolver — close the peer with a
+        // generic internal-error code rather than letting the exception
+        // escape the hook.
+        _safeClose(peer, 1011, "Upstream setup failed");
+        return;
+      }
 
       const state: UpstreamState = {
         ws,
@@ -165,7 +225,13 @@ export function createWebSocketProxy(
         }
         return;
       }
-      const size = typeof raw === "string" ? raw.length : raw.byteLength;
+      // Strings become UTF-8 on the wire: a UTF-16 code unit encodes to
+      // at most 3 UTF-8 bytes (surrogate pairs use 4 bytes spread across
+      // 2 code units, so the per-unit worst case still bounds at 3).
+      // Use the upper bound to keep the check O(1) while guaranteeing
+      // the buffered payload can't exceed the configured limit on the
+      // wire, even for multi-byte content.
+      const size = typeof raw === "string" ? raw.length * 3 : raw.byteLength;
       const limit = options.maxBufferSize ?? DEFAULT_MAX_BUFFER_SIZE;
       if (limit > 0 && state.bufferSize + size > limit) {
         _cleanupState(upstreams, peer.id, state);
@@ -245,6 +311,16 @@ function _resolveTarget(
 ): URL {
   const raw = typeof target === "function" ? target(peer) : target;
   return raw instanceof URL ? raw : new URL(raw);
+}
+
+function _resolveWsOptions(
+  headers: WebSocketProxyOptions["headers"],
+  peer: Peer,
+): { headers: HeadersInit } | undefined {
+  if (!headers) return;
+  const resolved = typeof headers === "function" ? headers(peer) : headers;
+  if (!resolved) return;
+  return { headers: resolved };
 }
 
 function _resolveProtocols(
