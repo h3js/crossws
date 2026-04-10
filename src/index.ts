@@ -18,4 +18,8 @@ export type { WSError } from "./error.ts";
 // Server
 export type { ServerWithWSOptions, WSOptions } from "./server/_types.ts";
 
+// Proxy
+export { createWebSocketProxy } from "./proxy.ts";
+export type { WebSocketProxyOptions } from "./proxy.ts";
+
 // Removed from 0.2.x: createCrossWS, Caller, WSRequest, CrossWS
