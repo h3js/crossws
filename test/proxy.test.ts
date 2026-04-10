@@ -3,6 +3,7 @@ import { createServer, Server } from "node:http";
 import { getRandomPort, waitForPort } from "get-port-please";
 import nodeAdapter from "../src/adapters/node.ts";
 import { createWebSocketProxy, defineHooks } from "../src/index.ts";
+import { _normalizeOutgoingCode, _remapIncomingCode } from "../src/proxy.ts";
 import { wsConnect } from "./_utils.ts";
 
 describe("createWebSocketProxy", () => {
@@ -18,7 +19,6 @@ describe("createWebSocketProxy", () => {
   let limitedProxyURL: string;
   let badProxyURL: string;
   let timeoutProxyURL: string;
-
   beforeAll(async () => {
     // Upstream echo server (crossws node adapter)
     const upstream = nodeAdapter({
@@ -242,5 +242,33 @@ describe("createWebSocketProxy", () => {
     await ws.send("bbbbb"); // 5 more bytes — exceeds
     const event = await closed;
     expect(event.code).toBe(1009);
+  });
+});
+
+describe("createWebSocketProxy internals", () => {
+  test("_normalizeOutgoingCode allows 1000 and 3000-4999 range", () => {
+    // state.ws is a client-side WebSocket; WHATWG forbids anything else.
+    expect(_normalizeOutgoingCode(undefined)).toBeUndefined();
+    expect(_normalizeOutgoingCode(1000)).toBe(1000);
+    expect(_normalizeOutgoingCode(3000)).toBe(3000);
+    expect(_normalizeOutgoingCode(4999)).toBe(4999);
+  });
+
+  test("_normalizeOutgoingCode rewrites reserved and disallowed codes to 1000", () => {
+    // Regression: state.ws.close(1005) would throw InvalidAccessError,
+    // leaking the upstream socket. 1001/1008 are valid server-side codes
+    // but still forbidden for client-side close(), so they also normalize.
+    for (const code of [1001, 1005, 1006, 1008, 1011, 1015, 2999, 5000]) {
+      expect(_normalizeOutgoingCode(code)).toBe(1000);
+    }
+  });
+
+  test("_remapIncomingCode rewrites reserved pseudo-codes before peer close", () => {
+    expect(_remapIncomingCode(undefined)).toBeUndefined();
+    expect(_remapIncomingCode(1000)).toBe(1000);
+    expect(_remapIncomingCode(1005)).toBe(1000);
+    expect(_remapIncomingCode(1006)).toBe(1011);
+    expect(_remapIncomingCode(1015)).toBe(1011);
+    expect(_remapIncomingCode(4321)).toBe(4321);
   });
 });

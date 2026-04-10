@@ -41,6 +41,16 @@ export interface WebSocketProxyOptions {
    * @default 10000
    */
   connectTimeout?: number;
+
+  /**
+   * Custom `WebSocket` constructor used to dial the upstream. Useful when
+   * the runtime does not expose a global `WebSocket` (Node.js < 22) or
+   * when you want to use a different client implementation (e.g. `ws`,
+   * `undici`, a mock for tests).
+   *
+   * @default globalThis.WebSocket
+   */
+  WebSocket?: typeof WebSocket;
 }
 
 /**
@@ -64,6 +74,13 @@ export function createWebSocketProxy(
       ? { target }
       : target;
 
+  const WebSocketCtor = options.WebSocket ?? globalThis.WebSocket;
+  if (typeof WebSocketCtor !== "function") {
+    throw new TypeError(
+      "createWebSocketProxy requires a `WebSocket` constructor. Pass one via the `WebSocket` option, or use a runtime that provides a global `WebSocket` (Node.js >= 22, Bun, Deno, Cloudflare Workers, browsers).",
+    );
+  }
+
   const upstreams = new Map<string, UpstreamState>();
 
   return {
@@ -82,7 +99,7 @@ export function createWebSocketProxy(
       const url = _resolveTarget(options.target, peer);
       const protocols = _resolveProtocols(peer, options.forwardProtocol);
 
-      const ws = new WebSocket(url, protocols);
+      const ws = new WebSocketCtor(url, protocols);
       ws.binaryType = "arraybuffer";
 
       const state: UpstreamState = {
@@ -123,7 +140,7 @@ export function createWebSocketProxy(
         // closures to the client.
         if (upstreams.get(peer.id) !== state) return;
         _cleanupState(upstreams, peer.id, state);
-        _safeClose(peer, _remapCloseCode(event.code), event.reason);
+        _safeClose(peer, _remapIncomingCode(event.code), event.reason);
       });
 
       ws.addEventListener("error", () => {
@@ -136,22 +153,29 @@ export function createWebSocketProxy(
     message(peer, message) {
       const state = upstreams.get(peer.id);
       if (!state) return;
-      const data =
+      const raw =
         typeof message.rawData === "string"
           ? message.rawData
           : message.uint8Array();
       if (state.open) {
-        state.ws.send(data);
+        try {
+          state.ws.send(raw);
+        } catch {
+          // upstream may have transitioned to CLOSING between the check and send
+        }
         return;
       }
-      const size = typeof data === "string" ? data.length : data.byteLength;
+      const size = typeof raw === "string" ? raw.length : raw.byteLength;
       const limit = options.maxBufferSize ?? DEFAULT_MAX_BUFFER_SIZE;
       if (limit > 0 && state.bufferSize + size > limit) {
         _cleanupState(upstreams, peer.id, state);
         _safeClose(peer, 1009, "Proxy buffer limit exceeded");
         return;
       }
-      state.buffer.push(data);
+      // Copy binary views before buffering: the adapter may own the backing
+      // memory (e.g. Node's `ws` reuses Buffers in some paths) and the buffer
+      // may be flushed asynchronously once the upstream is open.
+      state.buffer.push(typeof raw === "string" ? raw : Uint8Array.from(raw));
       state.bufferSize += size;
     },
 
@@ -162,7 +186,7 @@ export function createWebSocketProxy(
       upstreams.delete(peer.id);
       try {
         state.ws.close(
-          _remapCloseCode(details.code),
+          _normalizeOutgoingCode(details.code),
           _truncateReason(details.reason),
         );
       } catch {
@@ -262,11 +286,25 @@ function _truncateReason(reason?: string): string | undefined {
   );
 }
 
-// Reserved codes must never appear in an outbound close frame.
-// 1005 (no status), 1006 (abnormal), 1015 (TLS failure) get remapped.
-function _remapCloseCode(code?: number): number | undefined {
+// Upstream close event → peer.close. Reserved pseudo-codes (1005/1006/1015)
+// must never appear on the wire, so they are rewritten. Everything else is
+// forwarded as-is; server-side peers can use the full 1000-4999 range.
+/** @internal exported for tests */
+export function _remapIncomingCode(code?: number): number | undefined {
   if (code === undefined) return undefined;
   if (code === 1005) return 1000;
   if (code === 1006 || code === 1015) return 1011;
   return code;
+}
+
+// Peer close → upstream `state.ws.close`. The upstream is a client-side
+// WebSocket, and WHATWG restricts close() to 1000 or 3000-4999 — anything
+// else (1001 going-away, 1008 policy, etc.) throws InvalidAccessError.
+// Normalize to 1000 so we don't silently fail to close the upstream.
+/** @internal exported for tests */
+export function _normalizeOutgoingCode(code?: number): number | undefined {
+  if (code === undefined) return undefined;
+  if (code === 1000) return 1000;
+  if (code >= 3000 && code <= 4999) return code;
+  return 1000;
 }
