@@ -38,6 +38,35 @@ server.on("upgrade", (req, socket, head) => {
 See [`test/fixture/node.ts`](https://github.com/h3js/crossws/blob/main/test/fixture/node.ts) for demo and [`src/adapters/node.ts`](https://github.com/h3js/crossws/blob/main/src/adapters/node.ts) for implementation.
 ::
 
+## Delegating to an existing Node.js upgrade handler
+
+If you already have a Node.js WebSocket library that exposes a raw `(req, socket, head)` upgrade handler (e.g. [`ws`](https://github.com/websockets/ws), `socket.io`, `express-ws`), you can route to it through crossws using `fromNodeUpgradeHandler`. This lets you keep crossws's upgrade-time request handling while delegating the WebSocket lifecycle to your existing library.
+
+```ts
+import { WebSocketServer } from "ws";
+import { fromNodeUpgradeHandler } from "crossws";
+import { serve } from "crossws/server/node";
+
+const wss = new WebSocketServer({ noServer: true });
+wss.on("connection", (ws) => {
+  ws.on("message", (data) => ws.send(data));
+});
+
+serve({
+  fetch: () => new Response("ok"),
+  websocket: fromNodeUpgradeHandler((req, socket, head) => {
+    wss.handleUpgrade(req, socket, head, (ws) => {
+      wss.emit("connection", ws, req);
+    });
+  }),
+});
+```
+
+The underlying handler takes full ownership of the socket, so crossws's other lifecycle hooks (`open`, `message`, `close`, `error`) are **not** invoked for connections routed through it — manage the WebSocket lifecycle inside your own library as usual.
+
+> [!NOTE]
+> `fromNodeUpgradeHandler` only works on the Node.js runtime, and must be used via the crossws node server plugin so the request carries `runtime.node.upgrade.{socket, head}`.
+
 ## uWebSockets
 
 You can alternatively use [uWebSockets.js](https://github.com/uNetworking/uWebSockets.js) for Node.js servers.
