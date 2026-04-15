@@ -264,6 +264,7 @@ class CloudflareDurablePeer extends Peer<{
       state.u = request.url;
     }
     state.i = peer.id;
+    state.n = peer.namespace;
     setAttachedState(ws, state);
     return peer;
   }
