@@ -1,4 +1,15 @@
+import type { PublishOptions, Peer } from "./peer.ts";
+
 type BufferLike = string | Buffer | Uint8Array | ArrayBuffer;
+
+export function shouldPublishToPeer(
+  publisher: Peer,
+  peer: Peer,
+  topic: string,
+  options?: PublishOptions,
+): boolean {
+  return peer.topics.has(topic) && (options?.self === true || peer !== publisher);
+}
 
 // https://nodejs.org/api/util.html#utilinspectcustom
 export const kNodeInspect: unique symbol = /*#__PURE__*/ Symbol.for("nodejs.util.inspect.custom");

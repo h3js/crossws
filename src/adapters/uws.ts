@@ -5,7 +5,7 @@ import { toBufferLike } from "../utils.ts";
 import { adapterUtils, getPeers } from "../adapter.ts";
 import { AdapterHookable } from "../hooks.ts";
 import { Message } from "../message.ts";
-import { Peer, type PeerContext } from "../peer.ts";
+import { Peer, type PeerContext, type PublishOptions } from "../peer.ts";
 import { StubRequest } from "../_request.ts";
 
 // --- types ---
@@ -189,10 +189,13 @@ class UWSPeer extends Peer<{
     this._internal.uws.unsubscribe(topic);
   }
 
-  publish(topic: string, message: string, options?: { compress?: boolean }) {
+  publish(topic: string, message: string, options?: PublishOptions) {
     const data = toBufferLike(message);
     const isBinary = typeof data !== "string";
     this._internal.uws.publish(topic, data, isBinary, options?.compress);
+    if (options?.self && this.topics.has(topic)) {
+      this.send(message, options);
+    }
     return 0;
   }
 

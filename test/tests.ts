@@ -183,4 +183,13 @@ export function wsTests(getURL: () => string, opts: WSTestOpts): void {
       expect(await ws2.next()).toBe("ping");
     },
   );
+
+  test.skipIf(opts.adapter === "cloudflare" /* durable only */)(
+    "publish with self: true includes publisher",
+    async () => {
+      const ws1 = await wsConnect(getURL(), { skip: 1 });
+      await fetch(getURL().replace("ws", "http") + `publish-self?topic=chat&message=echo-self`);
+      expect(await ws1.next()).toBe("echo-self");
+    },
+  );
 }

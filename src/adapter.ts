@@ -1,5 +1,5 @@
 import type { Hooks, ResolveHooks } from "./hooks.ts";
-import type { Peer } from "./peer.ts";
+import type { Peer, PublishOptions } from "./peer.ts";
 
 export function adapterUtils(globalPeers: Map<string, Set<Peer>>): AdapterInstance {
   return {
@@ -46,7 +46,7 @@ export interface AdapterInstance {
   readonly publish: (
     topic: string,
     data: unknown,
-    options?: { compress?: boolean; namespace?: string },
+    options?: PublishOptions & { namespace?: string },
   ) => void;
 }
 

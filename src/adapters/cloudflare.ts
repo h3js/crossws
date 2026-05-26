@@ -7,7 +7,7 @@ import { toBufferLike } from "../utils.ts";
 import { adapterUtils, getPeers } from "../adapter.ts";
 import { AdapterHookable } from "../hooks.ts";
 import { Message } from "../message.ts";
-import { Peer, type PeerContext } from "../peer.ts";
+import { Peer, type PeerContext, type PublishOptions } from "../peer.ts";
 import { StubRequest } from "../_request.ts";
 import { WSError } from "../error.ts";
 
@@ -219,14 +219,14 @@ class CloudflareDurablePeer extends Peer<{
     setAttachedState(this._internal.ws, state);
   }
 
-  publish(topic: string, data: unknown): void {
+  publish(topic: string, data: unknown, options?: PublishOptions): void {
     const websockets = this.#getwebsockets();
-    if (websockets.length < 2 /* 1 is self! */) {
+    if (websockets.length < 2 && !options?.self) {
       return;
     }
     const dataBuff = toBufferLike(data);
     for (const ws of websockets) {
-      if (ws === this._internal.ws) {
+      if (ws === this._internal.ws && !options?.self) {
         continue;
       }
       const state = getAttachedState(ws);

@@ -4,7 +4,7 @@ import { toBufferLike } from "../utils.ts";
 import { adapterUtils, getPeers } from "../adapter.ts";
 import { AdapterHookable } from "../hooks.ts";
 import { Message } from "../message.ts";
-import { Peer, type PeerContext } from "../peer.ts";
+import { Peer, type PeerContext, type PublishOptions } from "../peer.ts";
 
 // --- types ---
 
@@ -113,8 +113,12 @@ class BunPeer extends Peer<{
     return this._internal.ws.send(toBufferLike(data), options?.compress);
   }
 
-  publish(topic: string, data: unknown, options?: { compress?: boolean }): number {
-    return this._internal.ws.publish(topic, toBufferLike(data), options?.compress);
+  publish(topic: string, data: unknown, options?: PublishOptions): number {
+    const result = this._internal.ws.publish(topic, toBufferLike(data), options?.compress);
+    if (options?.self && this.topics.has(topic)) {
+      this.send(data, options);
+    }
+    return result;
   }
 
   override subscribe(topic: string): void {

@@ -1,10 +1,10 @@
 import type { AdapterOptions, AdapterInstance, Adapter } from "../adapter.ts";
-import { toBufferLike } from "../utils.ts";
+import { toBufferLike, shouldPublishToPeer } from "../utils.ts";
 import { adapterUtils, getPeers } from "../adapter.ts";
 import { AdapterHookable } from "../hooks.ts";
 import { Message } from "../message.ts";
 import { WSError } from "../error.ts";
-import { Peer, type PeerContext } from "../peer.ts";
+import { Peer, type PeerContext, type PublishOptions } from "../peer.ts";
 
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
@@ -169,7 +169,7 @@ class NodePeer extends Peer<{
     return 0;
   }
 
-  publish(topic: string, data: unknown, options?: { compress?: boolean }): void {
+  publish(topic: string, data: unknown, options?: PublishOptions): void {
     const dataBuff = toBufferLike(data);
     const isBinary = typeof data !== "string";
     const sendOptions = {
@@ -178,7 +178,7 @@ class NodePeer extends Peer<{
       ...options,
     };
     for (const peer of this._internal.peers) {
-      if (peer !== this && peer._topics.has(topic)) {
+      if (shouldPublishToPeer(this, peer, topic, options)) {
         peer._internal.ws.send(dataBuff, sendOptions);
       }
     }

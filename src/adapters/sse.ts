@@ -1,10 +1,10 @@
 import type { AdapterOptions, AdapterInstance, Adapter } from "../adapter.ts";
 import type * as web from "../../types/web.ts";
-import { toString } from "../utils.ts";
+import { toString, shouldPublishToPeer } from "../utils.ts";
 import { adapterUtils, getPeers } from "../adapter.ts";
 import { AdapterHookable } from "../hooks.ts";
 import { Message } from "../message.ts";
-import { Peer, type PeerContext } from "../peer.ts";
+import { Peer, type PeerContext, type PublishOptions } from "../peer.ts";
 
 // --- types ---
 
@@ -138,10 +138,10 @@ class SSEPeer extends Peer<{
     return 0;
   }
 
-  publish(topic: string, data: unknown) {
+  publish(topic: string, data: unknown, options?: PublishOptions) {
     const dataBuff = toString(data);
     for (const peer of this._internal.peers) {
-      if (peer !== this && peer._topics.has(topic)) {
+      if (shouldPublishToPeer(this, peer, topic, options)) {
         peer._sendEvent("message", dataBuff);
       }
     }

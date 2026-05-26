@@ -3,6 +3,12 @@ import { kNodeInspect } from "./utils.ts";
 
 export interface PeerContext extends Record<string, unknown> {}
 
+export interface PublishOptions {
+  /** When `true`, include the publishing peer if subscribed (default: `false`). */
+  self?: boolean;
+  compress?: boolean;
+}
+
 export interface AdapterInternal {
   ws: unknown;
   request: Request;
@@ -98,8 +104,8 @@ export abstract class Peer<Internal extends AdapterInternal = AdapterInternal> {
   /** Send a message to the peer. */
   abstract send(data: unknown, options?: { compress?: boolean }): number | void | undefined;
 
-  /** Send message to subscribes of topic */
-  abstract publish(topic: string, data: unknown, options?: { compress?: boolean }): void;
+  /** Send message to subscribers of topic */
+  abstract publish(topic: string, data: unknown, options?: PublishOptions): void;
 
   // --- inspect ---
 

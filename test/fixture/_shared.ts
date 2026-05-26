@@ -104,5 +104,17 @@ export function handleDemoRoutes(ws: AdapterInstance, request: Request): Respons
     const message = url.searchParams.get("message") || "";
     ws.publish(topic, message);
     return new Response("published");
+  } else if (url.pathname === "/publish-self") {
+    const topic = url.searchParams.get("topic") || "";
+    const message = url.searchParams.get("message") || "";
+    for (const peers of ws.peers.values()) {
+      for (const peer of peers) {
+        if (peer.topics.has(topic)) {
+          peer.publish(topic, message, { self: true });
+          return new Response("published");
+        }
+      }
+    }
+    return new Response("no peer subscribed", { status: 404 });
   }
 }

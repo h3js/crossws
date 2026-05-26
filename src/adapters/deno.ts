@@ -1,10 +1,10 @@
 import type { AdapterOptions, AdapterInstance, Adapter } from "../adapter.ts";
-import { toBufferLike } from "../utils.ts";
+import { toBufferLike, shouldPublishToPeer } from "../utils.ts";
 import { adapterUtils, getPeers } from "../adapter.ts";
 import { AdapterHookable } from "../hooks.ts";
 import { Message } from "../message.ts";
 import { WSError } from "../error.ts";
-import { Peer, type PeerContext } from "../peer.ts";
+import { Peer, type PeerContext, type PublishOptions } from "../peer.ts";
 
 // --- types ---
 
@@ -96,10 +96,10 @@ class DenoPeer extends Peer<{
     return this._internal.ws.send(toBufferLike(data));
   }
 
-  publish(topic: string, data: unknown) {
+  publish(topic: string, data: unknown, options?: PublishOptions) {
     const dataBuff = toBufferLike(data);
     for (const peer of this._internal.peers) {
-      if (peer !== this && peer._topics.has(topic)) {
+      if (shouldPublishToPeer(this, peer, topic, options)) {
         peer._internal.ws.send(dataBuff);
       }
     }
