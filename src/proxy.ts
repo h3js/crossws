@@ -23,11 +23,31 @@ export interface WebSocketProxyOptions {
   target: string | URL | ((peer: Peer) => string | URL);
 
   /**
-   * Forward the client's `sec-websocket-protocol` header to the upstream.
+   * Subprotocol(s) to offer the upstream during the handshake.
+   *
+   * - `true` (default) — forward the client's `sec-websocket-protocol` verbatim.
+   * - `false` — offer no subprotocol upstream.
+   * - `string` / `string[]` — offer a fixed subprotocol (or list) upstream,
+   *   regardless of what the client requested.
+   * - `Record<string, string>` — rewrite map applied to the client's offered
+   *   tokens: a token that matches a key is swapped for its value; tokens not
+   *   in the map are forwarded verbatim.
+   * - function — resolve the upstream subprotocol(s) per {@link Peer}. Return a
+   *   string, an array of strings, or `undefined` to offer none. Useful when the
+   *   rewrite depends on more than the token value alone.
+   *
+   * Note: this controls only what is offered to the *upstream*. The subprotocol
+   * echoed back to the *client* remains the first token the client offered (per
+   * RFC 6455, the selected protocol must be one the client proposed).
    *
    * @default true
    */
-  forwardProtocol?: boolean;
+  forwardProtocol?:
+    | boolean
+    | string
+    | string[]
+    | Record<string, string>
+    | ((peer: Peer) => string | string[] | undefined | void);
 
   /**
    * Maximum number of bytes buffered per peer while the upstream connection
@@ -312,14 +332,54 @@ function _resolveWsOptions(
   return { headers: resolved };
 }
 
-function _resolveProtocols(peer: Peer, forwardProtocol: boolean | undefined): string[] | undefined {
+/** @internal exported for tests */
+export function _resolveProtocols(
+  peer: Peer,
+  forwardProtocol: WebSocketProxyOptions["forwardProtocol"],
+): string[] | undefined {
   if (forwardProtocol === false) return;
+
+  // Per-peer resolver — fully dynamic.
+  if (typeof forwardProtocol === "function") {
+    return _normalizeProtocols(forwardProtocol(peer));
+  }
+
+  // Static value — offer a fixed subprotocol (or list) upstream, regardless
+  // of what the client requested.
+  if (typeof forwardProtocol === "string" || Array.isArray(forwardProtocol)) {
+    return _normalizeProtocols(forwardProtocol);
+  }
+
   const header = peer.request?.headers.get("sec-websocket-protocol");
   if (!header) return;
-  return header
+  const offered = header
     .split(",")
     .map((p) => p.trim())
     .filter(Boolean);
+
+  // Rewrite map — swap mapped client tokens, pass the rest through verbatim.
+  // `hasOwnProperty` guards against inherited keys (e.g. `toString`) being
+  // treated as rewrite rules.
+  if (forwardProtocol && typeof forwardProtocol === "object") {
+    return _normalizeProtocols(
+      offered.map((p) =>
+        Object.prototype.hasOwnProperty.call(forwardProtocol, p) ? forwardProtocol[p]! : p,
+      ),
+    );
+  }
+
+  // `true` / `undefined` — forward the client header verbatim.
+  return offered.length > 0 ? offered : undefined;
+}
+
+// Coerce a resolver/static value into a clean token list, or `undefined` to
+// offer no subprotocol. Trims, drops empties, and tolerates `null`/`void`.
+function _normalizeProtocols(value: string | string[] | undefined | void): string[] | undefined {
+  if (value == null) return;
+  const list = (Array.isArray(value) ? value : [value])
+    .map((p) => String(p).trim())
+    .filter(Boolean);
+  return list.length > 0 ? list : undefined;
 }
 
 function _safeClose(peer: Peer, code?: number, reason?: string): void {

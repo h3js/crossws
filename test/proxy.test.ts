@@ -3,7 +3,7 @@ import { createServer, Server } from "node:http";
 import { getRandomPort, waitForPort } from "get-port-please";
 import nodeAdapter from "../src/adapters/node.ts";
 import { createWebSocketProxy, defineHooks } from "../src/index.ts";
-import { _normalizeOutgoingCode, _remapIncomingCode } from "../src/proxy.ts";
+import { _normalizeOutgoingCode, _remapIncomingCode, _resolveProtocols } from "../src/proxy.ts";
 import { wsConnect } from "./_utils.ts";
 
 describe("createWebSocketProxy", () => {
@@ -380,5 +380,100 @@ describe("createWebSocketProxy internals", () => {
     expect(_remapIncomingCode(1006)).toBe(1011);
     expect(_remapIncomingCode(1015)).toBe(1011);
     expect(_remapIncomingCode(4321)).toBe(4321);
+  });
+
+  test("_resolveProtocols resolves boolean and function forms", () => {
+    const peerWith = (protocol?: string) =>
+      ({
+        request: new Request(
+          "http://localhost/",
+          protocol ? { headers: { "sec-websocket-protocol": protocol } } : undefined,
+        ),
+      }) as never;
+
+    // boolean: undefined/true forwards the client header verbatim
+    expect(_resolveProtocols(peerWith("a, b"), undefined)).toEqual(["a", "b"]);
+    expect(_resolveProtocols(peerWith("a, b"), true)).toEqual(["a", "b"]);
+    expect(_resolveProtocols(peerWith(), true)).toBeUndefined();
+
+    // boolean false: offer nothing
+    expect(_resolveProtocols(peerWith("a, b"), false)).toBeUndefined();
+
+    // function: string, array, undefined
+    expect(_resolveProtocols(peerWith("a"), () => "x")).toEqual(["x"]);
+    expect(_resolveProtocols(peerWith("a"), () => ["x", " y "])).toEqual(["x", "y"]);
+    expect(_resolveProtocols(peerWith("a"), () => undefined)).toBeUndefined();
+    expect(_resolveProtocols(peerWith("a"), () => [])).toBeUndefined();
+    expect(_resolveProtocols(peerWith("a"), () => ["", "  "])).toBeUndefined();
+
+    // function: re-label client token for the upstream
+    const stripPrefix = (peer: { request: Request }) =>
+      (peer.request.headers.get("sec-websocket-protocol") ?? "")
+        .split(",")
+        .map((p) => p.trim())
+        .filter(Boolean)
+        .map((p) => (p.startsWith("x-test-") ? p.slice("x-test-".length) : p));
+    expect(_resolveProtocols(peerWith("x-test-vite-hmr"), stripPrefix as never)).toEqual([
+      "vite-hmr",
+    ]);
+
+    // static string / string[]: offer a fixed value regardless of the client
+    expect(_resolveProtocols(peerWith("x-test-vite-hmr"), "vite-hmr")).toEqual(["vite-hmr"]);
+    expect(_resolveProtocols(peerWith(), "vite-hmr")).toEqual(["vite-hmr"]);
+    expect(_resolveProtocols(peerWith("a"), [" v1 ", "v2", ""])).toEqual(["v1", "v2"]);
+    expect(_resolveProtocols(peerWith("a"), "  ")).toBeUndefined();
+
+    // rewrite map: swap mapped tokens, pass the rest through verbatim
+    expect(
+      _resolveProtocols(peerWith("pspace-proxied-vite-hmr, chat"), {
+        "pspace-proxied-vite-hmr": "vite-hmr",
+      }),
+    ).toEqual(["vite-hmr", "chat"]);
+    // map with no matching client tokens forwards them unchanged
+    expect(_resolveProtocols(peerWith("chat"), { other: "x" })).toEqual(["chat"]);
+    // map ignores inherited keys (no client header → nothing to offer)
+    expect(_resolveProtocols(peerWith(), { a: "b" })).toBeUndefined();
+    expect(_resolveProtocols(peerWith("toString"), {})).toEqual(["toString"]);
+  });
+
+  test("forwardProtocol resolver feeds the upstream constructor's protocols argument", () => {
+    const calls: Array<{ protocols: unknown }> = [];
+    class StubWS extends EventTarget {
+      binaryType = "arraybuffer";
+      readyState = 0;
+      constructor(_url: unknown, protocols?: unknown) {
+        super();
+        calls.push({ protocols });
+      }
+      send(): void {}
+      close(): void {}
+    }
+    const hooks = createWebSocketProxy({
+      target: "ws://upstream.invalid/",
+      WebSocket: StubWS as unknown as typeof WebSocket,
+      connectTimeout: 0,
+      forwardProtocol: (peer) =>
+        (peer.request?.headers.get("sec-websocket-protocol") ?? "")
+          .split(",")
+          .map((p) => p.trim())
+          .filter(Boolean)
+          .map((p) => (p.startsWith("x-test-") ? p.slice("x-test-".length) : p)),
+    });
+    const peer = {
+      id: "p-proto",
+      request: new Request("http://localhost/", {
+        headers: { "sec-websocket-protocol": "x-test-vite-hmr" },
+      }),
+      close() {},
+      send() {},
+    };
+    hooks.open?.(peer as never);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.protocols).toEqual(["vite-hmr"]);
+
+    // The client-facing echo stays the client-offered token, not the resolved one.
+    expect(hooks.upgrade?.(peer.request)).toMatchObject({
+      headers: { "sec-websocket-protocol": "x-test-vite-hmr" },
+    });
   });
 });
