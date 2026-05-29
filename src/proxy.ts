@@ -142,12 +142,12 @@ export function createWebSocketProxy(
       }
       // Accept the first requested subprotocol so the upgrade handshake
       // echoes a value the client expects. Upstream must support it too.
-      const accepted = reqProtocol.split(",")[0]!.trim();
+      const accepted = _splitProtocolHeader(reqProtocol)[0];
       // Defense-in-depth: only echo RFC 7230 tokens. The Fetch `Headers`
       // API already rejects CRLF, but restricting to the subprotocol
       // grammar ensures no other client-controlled bytes can land in a
       // response header — even under buggy or custom header writers.
-      if (!TOKEN_RE.test(accepted)) {
+      if (!accepted || !TOKEN_RE.test(accepted)) {
         return;
       }
       return { headers: { "sec-websocket-protocol": accepted } };
@@ -352,34 +352,45 @@ export function _resolveProtocols(
 
   const header = peer.request?.headers.get("sec-websocket-protocol");
   if (!header) return;
-  const offered = header
-    .split(",")
-    .map((p) => p.trim())
-    .filter(Boolean);
+  const offered = _splitProtocolHeader(header);
 
   // Rewrite map — swap mapped client tokens, pass the rest through verbatim.
   // `hasOwnProperty` guards against inherited keys (e.g. `toString`) being
   // treated as rewrite rules.
   if (forwardProtocol && typeof forwardProtocol === "object") {
+    const map = forwardProtocol;
     return _normalizeProtocols(
-      offered.map((p) =>
-        Object.prototype.hasOwnProperty.call(forwardProtocol, p) ? forwardProtocol[p]! : p,
-      ),
+      offered.map((p) => (Object.prototype.hasOwnProperty.call(map, p) ? map[p] : p)),
     );
   }
 
   // `true` / `undefined` — forward the client header verbatim.
-  return offered.length > 0 ? offered : undefined;
+  return _normalizeProtocols(offered);
 }
 
-// Coerce a resolver/static value into a clean token list, or `undefined` to
-// offer no subprotocol. Trims, drops empties, and tolerates `null`/`void`.
-function _normalizeProtocols(value: string | string[] | undefined | void): string[] | undefined {
+// Split a `sec-websocket-protocol` header value into trimmed, non-empty tokens.
+function _splitProtocolHeader(header: string): string[] {
+  return header
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+}
+
+// Coerce a resolver/static/rewritten value into a clean token list, or
+// `undefined` to offer no subprotocol. Drops nullish/empty entries, trims, and
+// de-duplicates — the WHATWG `WebSocket` constructor rejects a protocols list
+// containing duplicates or blank tokens, so a rewrite map that collapses
+// several client tokens onto one upstream value must not produce repeats.
+function _normalizeProtocols(
+  value: string | ReadonlyArray<string | undefined | null> | undefined | void,
+): string[] | undefined {
   if (value == null) return;
   const list = (Array.isArray(value) ? value : [value])
+    .filter((p) => p != null)
     .map((p) => String(p).trim())
     .filter(Boolean);
-  return list.length > 0 ? list : undefined;
+  const deduped = [...new Set(list)];
+  return deduped.length > 0 ? deduped : undefined;
 }
 
 function _safeClose(peer: Peer, code?: number, reason?: string): void {

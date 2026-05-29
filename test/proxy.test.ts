@@ -434,6 +434,22 @@ describe("createWebSocketProxy internals", () => {
     // map ignores inherited keys (no client header → nothing to offer)
     expect(_resolveProtocols(peerWith(), { a: "b" })).toBeUndefined();
     expect(_resolveProtocols(peerWith("toString"), {})).toEqual(["toString"]);
+
+    // de-dupe: a rewrite map collapsing several tokens onto one value, or a
+    // client offering duplicates, must not produce repeats (the WHATWG
+    // WebSocket constructor rejects a protocols list with duplicates).
+    expect(_resolveProtocols(peerWith("proxied-hmr, hmr"), { "proxied-hmr": "hmr" })).toEqual([
+      "hmr",
+    ]);
+    expect(_resolveProtocols(peerWith("a, a, b"), true)).toEqual(["a", "b"]);
+    expect(_resolveProtocols(peerWith("a"), () => ["x", "x"])).toEqual(["x"]);
+
+    // nullish entries inside a returned/mapped list are dropped, not coerced
+    // to the literal strings "null"/"undefined".
+    expect(_resolveProtocols(peerWith("a"), () => ["vite-hmr", null as never])).toEqual([
+      "vite-hmr",
+    ]);
+    expect(_resolveProtocols(peerWith("a, b"), { a: undefined as never })).toEqual(["b"]);
   });
 
   test("forwardProtocol resolver feeds the upstream constructor's protocols argument", () => {
