@@ -25,6 +25,7 @@
     "./adapters/cloudflare": "./dist/adapters/cloudflare.mjs",
     "./adapters/sse": "./dist/adapters/sse.mjs",
     "./adapters/node": "./dist/adapters/node.mjs",
+    "./adapters/vercel": "./dist/adapters/vercel.mjs",
     "./adapters/uws": "./dist/adapters/uws.mjs",
     "./server/bun": "./dist/server/bun.mjs",
     "./server/bunny": "./dist/server/bunny.mjs",
