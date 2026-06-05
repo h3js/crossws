@@ -1,5 +1,6 @@
 ---
 icon: simple-icons:vercel
+navigation: false
 ---
 
 # Vercel
@@ -7,6 +8,9 @@ icon: simple-icons:vercel
 > Integrate crossws with Vercel Functions that expose WebSocket upgrades.
 
 The Vercel adapter uses Vercel's request context to access the raw Node.js upgrade request, socket, and head. That platform detail stays private inside the adapter, so applications can keep using the normal crossws hooks API.
+
+> [!NOTE]
+> Vercel adapter is not generally available yet.
 
 ## Fetch-style handlers
 
