@@ -7,8 +7,23 @@ import nodeAdapter, { type NodeAdapter, type NodeOptions } from "./node.ts";
 // --- types ---
 
 export interface VercelAdapter extends Omit<NodeAdapter, "handleUpgrade"> {
-  handleUpgrade(request: Request): Promise<Response | undefined>;
-  handleUpgrade(req: IncomingMessage, res: ServerResponse): Promise<boolean>;
+  /**
+   * Handle a WebSocket upgrade from a Web `Request` (fetch-style handlers).
+   *
+   * Returns a `204` {@link Response} when the upgrade was handled, or
+   * `undefined` when the request is not a WebSocket upgrade or Vercel's upgrade
+   * context is unavailable.
+   */
+  handleWebUpgrade(request: Request): Promise<Response | undefined>;
+  /**
+   * Handle a WebSocket upgrade from a Node.js `IncomingMessage` (Node-style
+   * handlers).
+   *
+   * Returns `true` when the upgrade was handled (and ends `res` with `204`), or
+   * `false` when the request is not a WebSocket upgrade or Vercel's upgrade
+   * context is unavailable.
+   */
+  handleNodeUpgrade(req: IncomingMessage, res: ServerResponse): Promise<boolean>;
 }
 
 export interface VercelOptions extends NodeOptions {}
@@ -30,46 +45,44 @@ const VERCEL_REQUEST_CONTEXT_SYMBOL = Symbol.for("@vercel/request-context");
 const vercelAdapter: Adapter<VercelAdapter, VercelOptions> = (options = {}) => {
   const node = nodeAdapter(options);
 
-  async function handleUpgrade(request: Request): Promise<Response | undefined>;
-  async function handleUpgrade(req: IncomingMessage, res: ServerResponse): Promise<boolean>;
-  async function handleUpgrade(
-    request: Request | IncomingMessage,
-    res?: ServerResponse,
-  ): Promise<Response | boolean | undefined> {
-    const fetchStyle = isWebRequest(request);
-    if (!isWebSocketUpgradeRequest(request)) {
-      return fetchStyle ? undefined : false;
+  // Web path: receives a `Request`, returns a `Response`.
+  async function handleWebUpgrade(request: Request): Promise<Response | undefined> {
+    if (request.method !== "GET" || !isWebSocketUpgrade(request.headers.get("upgrade"))) {
+      return undefined;
     }
 
-    const upgrade = getVercelRequestContext()?.upgradeWebSocket?.();
-    if (!isVercelUpgrade(upgrade)) {
-      return fetchStyle ? undefined : false;
+    const upgrade = getVercelUpgrade();
+    if (!upgrade) {
+      return undefined;
     }
 
     if (typeof request.url === "string") {
       upgrade.req.url = toNodeRequestURL(request.url);
     }
 
-    await node.handleUpgrade(
-      upgrade.req,
-      upgrade.socket,
-      upgrade.head,
-      new NodeRequest({
-        req: upgrade.req,
-        res,
-        // @ts-expect-error (upgrade is not typed by srvx yet)
-        upgrade: {
-          socket: upgrade.socket,
-          head: upgrade.head,
-        },
-      }),
-    );
+    await performUpgrade(node, upgrade);
 
-    if (fetchStyle) {
-      return new Response(null, { status: 204 });
+    return new Response(null, { status: 204 });
+  }
+
+  // Node path: receives an `IncomingMessage`/`ServerResponse`, returns a boolean.
+  async function handleNodeUpgrade(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
+    if (req.method !== "GET" || !isWebSocketUpgrade(getNodeHeader(req, "upgrade"))) {
+      return false;
     }
 
-    if (res && !res.headersSent && !res.writableEnded) {
+    const upgrade = getVercelUpgrade();
+    if (!upgrade) {
+      return false;
+    }
+
+    if (typeof req.url === "string") {
+      upgrade.req.url = toNodeRequestURL(req.url);
+    }
+
+    await performUpgrade(node, upgrade, res);
+
+    if (!res.headersSent && !res.writableEnded) {
       res.statusCode = 204;
       res.end();
     }
@@ -79,11 +92,40 @@ const vercelAdapter: Adapter<VercelAdapter, VercelOptions> = (options = {}) => {
 
   return {
     ...node,
-    handleUpgrade,
+    handleWebUpgrade,
+    handleNodeUpgrade,
   };
 };
 
 export default vercelAdapter;
+
+// --- shared upgrade handling ---
+
+async function performUpgrade(
+  node: NodeAdapter,
+  upgrade: VercelUpgrade,
+  res?: ServerResponse,
+): Promise<void> {
+  await node.handleUpgrade(
+    upgrade.req,
+    upgrade.socket,
+    upgrade.head,
+    new NodeRequest({
+      req: upgrade.req,
+      res,
+      // @ts-expect-error (upgrade is not typed by srvx yet)
+      upgrade: {
+        socket: upgrade.socket,
+        head: upgrade.head,
+      },
+    }),
+  );
+}
+
+function getVercelUpgrade(): VercelUpgrade | undefined {
+  const upgrade = getVercelRequestContext()?.upgradeWebSocket?.();
+  return isVercelUpgrade(upgrade) ? upgrade : undefined;
+}
 
 function getVercelRequestContext(): VercelRequestContext | undefined {
   const store = (globalThis as Record<symbol, unknown>)[VERCEL_REQUEST_CONTEXT_SYMBOL] as
@@ -107,19 +149,12 @@ function isVercelUpgrade(upgrade: unknown): upgrade is VercelUpgrade {
   return Boolean(candidate.req && candidate.socket && candidate.head);
 }
 
-function isWebRequest(request: Request | IncomingMessage): request is Request {
-  return typeof (request as Request).headers?.get === "function";
+function isWebSocketUpgrade(upgradeHeader: string | undefined | null): boolean {
+  return upgradeHeader?.toLowerCase() === "websocket";
 }
 
-function isWebSocketUpgradeRequest(request: Request | IncomingMessage): boolean {
-  return request.method === "GET" && getHeader(request, "upgrade")?.toLowerCase() === "websocket";
-}
-
-function getHeader(request: Request | IncomingMessage, name: string): string | undefined {
-  if (isWebRequest(request)) {
-    return request.headers.get(name) || undefined;
-  }
-  const value = request.headers[name.toLowerCase()];
+function getNodeHeader(req: IncomingMessage, name: string): string | undefined {
+  const value = req.headers[name.toLowerCase()];
   return Array.isArray(value) ? value.join(", ") : value;
 }
 

@@ -22,7 +22,7 @@ describe("vercel", () => {
   const ws = createDemo(vercelAdapter);
 
   test("does not handle non-upgrade fetch requests", async () => {
-    await expect(ws.handleUpgrade(new Request("https://example.com/"))).resolves.toBeUndefined();
+    await expect(ws.handleWebUpgrade(new Request("https://example.com/"))).resolves.toBeUndefined();
   });
 
   test("does not handle websocket requests without Vercel request context", async () => {
@@ -30,7 +30,7 @@ describe("vercel", () => {
     deleteGlobalRequestContext();
     try {
       await expect(
-        ws.handleUpgrade(
+        ws.handleWebUpgrade(
           new Request("https://example.com/", {
             headers: { upgrade: "websocket" },
           }),
@@ -43,7 +43,7 @@ describe("vercel", () => {
 
   test("does not handle non-upgrade node requests", async () => {
     await expect(
-      ws.handleUpgrade(
+      ws.handleNodeUpgrade(
         { method: "GET", headers: {} } as IncomingMessage,
         {
           headersSent: false,
@@ -54,7 +54,7 @@ describe("vercel", () => {
     ).resolves.toBe(false);
   });
 
-  describe("fetch-style handleUpgrade", () => {
+  describe("fetch-style handleWebUpgrade", () => {
     beforeAll(async () => {
       server = createServer((req, res) => {
         if (req.url === "/peers") {
@@ -80,7 +80,7 @@ describe("vercel", () => {
       server.on("upgrade", async (req, socket, head) => {
         const previous = installVercelUpgrade({ req, socket, head });
         try {
-          await ws.handleUpgrade(toVercelWebRequest(req));
+          await ws.handleWebUpgrade(toVercelWebRequest(req));
         } catch (error) {
           socket.destroy(error as Error);
         } finally {
@@ -132,7 +132,7 @@ describe("vercel", () => {
     runtimeServer.on("upgrade", async (req, socket, head) => {
       const previous = installVercelUpgrade({ req, socket, head });
       try {
-        await runtimeWs.handleUpgrade(toVercelWebRequest(req));
+        await runtimeWs.handleWebUpgrade(toVercelWebRequest(req));
       } catch (error) {
         socket.destroy(error as Error);
       } finally {
