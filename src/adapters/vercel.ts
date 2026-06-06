@@ -159,10 +159,19 @@ function getNodeHeader(req: IncomingMessage, name: string): string | undefined {
 }
 
 function toNodeRequestURL(url: string): string {
-  try {
-    const parsed = new URL(url);
-    return parsed.pathname + parsed.search;
-  } catch {
-    return url || "/";
+  if (!url) {
+    return "/";
   }
+  if (url[0] === "/") {
+    return url;
+  }
+  if (/^https?:\/\//i.test(url)) {
+    try {
+      const parsed = new URL(url);
+      return parsed.pathname + parsed.search;
+    } catch {
+      return url;
+    }
+  }
+  return url;
 }
