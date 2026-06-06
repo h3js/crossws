@@ -166,12 +166,8 @@ function toNodeRequestURL(url: string): string {
     return url;
   }
   if (/^https?:\/\//i.test(url)) {
-    try {
-      const parsed = new URL(url);
-      return parsed.pathname + parsed.search;
-    } catch {
-      return url;
-    }
+    const parsed = new URL(url);
+    return parsed.pathname + parsed.search;
   }
-  return url;
+  return "/" + url;
 }
