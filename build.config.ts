@@ -1,8 +1,8 @@
-import { mkdir, writeFile} from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { defineBuildConfig } from "obuild/config";
 
-const adapters = ["bun", "bunny", "cloudflare", "deno", "node", "sse", "uws"];
+const adapters = ["bun", "bunny", "cloudflare", "deno", "node", "sse", "uws", "vercel"];
 
 const servers = ["bun", "bunny", "cloudflare", "default", "deno", "node"];
 
