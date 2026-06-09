@@ -1,8 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { createServer, type IncomingMessage, type Server } from "node:http";
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
 import { getRandomPort, waitForPort } from "get-port-please";
-import type { ServerRequest } from "srvx";
 import vercelAdapter from "../../src/adapters/vercel";
 import { createDemo } from "../fixture/_shared";
 import { wsTests } from "../tests";
@@ -54,6 +53,25 @@ describe("vercel", () => {
     ).resolves.toBe(false);
   });
 
+  test("does not handle node websocket requests without Vercel request context", async () => {
+    const previous = getGlobalRequestContext();
+    deleteGlobalRequestContext();
+    try {
+      await expect(
+        ws.handleNodeUpgrade(
+          { method: "GET", headers: { upgrade: "websocket" } } as IncomingMessage,
+          {
+            headersSent: false,
+            writableEnded: false,
+            end: () => {},
+          } as never,
+        ),
+      ).resolves.toBe(false);
+    } finally {
+      restoreGlobalRequestContext(previous);
+    }
+  });
+
   describe("fetch-style handleWebUpgrade", () => {
     beforeAll(async () => {
       server = createServer((req, res) => {
@@ -103,26 +121,100 @@ describe("vercel", () => {
     });
   });
 
-  test("passes node upgrade runtime metadata to resolved hooks", async () => {
-    let seenNodeRuntime:
-      | {
-          req?: IncomingMessage;
-          upgrade?: {
-            socket?: Duplex;
-            head?: Buffer;
-          };
+  describe("node-style handleNodeUpgrade", () => {
+    let nodeServer: Server;
+    let nodeUrl: string;
+
+    beforeAll(async () => {
+      nodeServer = createServer((req, res) => {
+        if (req.url === "/peers") {
+          return res.end(
+            JSON.stringify({
+              peers: [...ws.peers].flatMap(([namespace, peers]) =>
+                [...peers].map((p) => `${namespace}:${p.id}`),
+              ),
+            }),
+          );
         }
-      | undefined;
+        if (req.url!.startsWith("/publish")) {
+          const q = new URLSearchParams(req.url!.split("?")[1]);
+          const topic = q.get("topic") || "";
+          const message = q.get("message") || "";
+          if (topic && message) {
+            ws.publish(topic, message);
+            return res.end("published");
+          }
+        }
+        res.end("ok");
+      });
+      nodeServer.on("upgrade", async (req, socket, head) => {
+        const previous = installVercelUpgrade({ req, socket, head });
+        try {
+          const res = new MockServerResponse(req);
+          await ws.handleNodeUpgrade(req, res as unknown as ServerResponse);
+        } catch (error) {
+          socket.destroy(error as Error);
+        } finally {
+          restoreGlobalRequestContext(previous);
+        }
+      });
+      const port = await getRandomPort("localhost");
+      nodeUrl = `ws://localhost:${port}/`;
+      await new Promise<void>((resolve) => nodeServer.listen(port, resolve));
+      await waitForPort(port);
+    });
+
+    afterAll(() => {
+      ws.closeAll();
+      nodeServer.close();
+    });
+
+    wsTests(() => nodeUrl, {
+      adapter: "vercel",
+    });
+  });
+
+  test("handleNodeUpgrade ends response with 204", async () => {
+    const runtimeWs = createDemo(vercelAdapter);
+    const runtimeServer = createServer();
+    let capturedStatusCode: number | undefined;
+    let endCalled = false;
+
+    runtimeServer.on("upgrade", async (req, socket, head) => {
+      const previous = installVercelUpgrade({ req, socket, head });
+      try {
+        const res = new MockServerResponse(req);
+        await runtimeWs.handleNodeUpgrade(req, res as unknown as ServerResponse);
+        capturedStatusCode = res.statusCode;
+        endCalled = res.writableEnded;
+      } catch (error) {
+        socket.destroy(error as Error);
+      } finally {
+        restoreGlobalRequestContext(previous);
+      }
+    });
+
+    try {
+      const port = await listen(runtimeServer);
+      const client = await wsConnect(`ws://localhost:${port}/test`);
+      // Wait for the open message to confirm the connection succeeded
+      await client.next();
+      client.ws.close();
+
+      expect(capturedStatusCode).toBe(204);
+      expect(endCalled).toBe(true);
+    } finally {
+      await closeServer(runtimeServer);
+      runtimeWs.closeAll();
+    }
+  });
+
+  test("passes web request to resolved hooks via handleWebUpgrade", async () => {
+    let seenRequest: Request | undefined;
     const runtimeWs = vercelAdapter({
       hooks: {
         upgrade(request) {
-          seenNodeRuntime = (
-            request as ServerRequest & {
-              runtime?: {
-                node?: typeof seenNodeRuntime;
-              };
-            }
-          ).runtime?.node;
+          seenRequest = request;
           return new Response("handled", { status: 418 });
         },
       },
@@ -146,13 +238,8 @@ describe("vercel", () => {
 
       expect(client.error).toBeDefined();
       expect(client.inspector.status).toBe(418);
-      expect(seenNodeRuntime).toMatchObject({
-        req: expect.any(Object),
-        upgrade: {
-          socket: expect.any(Object),
-          head: expect.any(Buffer),
-        },
-      });
+      expect(seenRequest).toBeInstanceOf(Request);
+      expect(seenRequest!.url).toContain("/runtime");
     } finally {
       await closeServer(runtimeServer);
       runtimeWs.closeAll();
@@ -221,4 +308,21 @@ async function closeServer(server: Server): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     server.close((error) => (error ? reject(error) : resolve()));
   });
+}
+
+/**
+ * Minimal stand-in for `ServerResponse` that tracks `statusCode` and
+ * `writableEnded` without needing a real socket.
+ */
+class MockServerResponse {
+  statusCode = 200;
+  headersSent = false;
+  writableEnded = false;
+
+  constructor(public req: IncomingMessage) {}
+
+  end(_cb?: () => void) {
+    this.writableEnded = true;
+    _cb?.();
+  }
 }
