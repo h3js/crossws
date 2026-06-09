@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.4.6
+
+[compare changes](https://github.com/h3js/crossws/compare/v0.4.5...v0.4.6)
+
+### 🚀 Enhancements
+
+- Add `vercel` adapter ([#191](https://github.com/h3js/crossws/pull/191))
+- **proxy:** Allow `forwardProtocol` to rewrite the upstream subprotocol ([#190](https://github.com/h3js/crossws/pull/190))
+
+### 🩹 Fixes
+
+- **cloudflare:** Persist peer namespace in Durable Object attachment ([#188](https://github.com/h3js/crossws/pull/188))
+
+### 🏡 Chore
+
+- **release:** V0.4.5 ([4133ea3](https://github.com/h3js/crossws/commit/4133ea3))
+- Fix typo in docs ([29b7787](https://github.com/h3js/crossws/commit/29b7787))
+- Update pnpm and deps ([b217adf](https://github.com/h3js/crossws/commit/b217adf))
+
+### ❤️ Contributors
+
+- Pooya Parsa ([@pi0](https://github.com/pi0))
+- David Marr ([@marr](https://github.com/marr))
+- Pi0x <x@pi0.io>
+- Andrew Barba ([@AndrewBarba](https://github.com/AndrewBarba))
+
 ## v0.4.5
 
 [compare changes](https://github.com/h3js/crossws/compare/v0.4.4...v0.4.5)
