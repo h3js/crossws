@@ -35,6 +35,8 @@ const denoAdapter: Adapter<DenoAdapter, DenoOptions> = (options = {}) => {
   return {
     ...adapterUtils(globalPeers),
     handleUpgrade: async (request, info) => {
+      // Capture eagerly: Deno's `remoteAddr` getter throws once the request is upgraded/closed
+      const remoteAddress = info.remoteAddr?.hostname;
       const { upgradeHeaders, endResponse, context, namespace } = await hooks.upgrade(request);
       if (endResponse) {
         return endResponse;
@@ -52,8 +54,7 @@ const denoAdapter: Adapter<DenoAdapter, DenoOptions> = (options = {}) => {
         ws: upgrade.socket,
         request,
         peers,
-        // Capture eagerly: Deno's `remoteAddr` getter throws once the request is closed
-        remoteAddress: info.remoteAddr?.hostname,
+        remoteAddress,
         context,
         namespace,
       });
