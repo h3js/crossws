@@ -37,6 +37,10 @@ const denoAdapter: Adapter<DenoAdapter, DenoOptions> = (options = {}) => {
   return {
     ...baseUtils,
     handleUpgrade: async (request, info) => {
+      // Deno invalidates the request once upgraded: `remoteAddr`, `url` and `headers`
+      // all throw "Request closed" afterwards. Snapshot what the peer exposes up front.
+      const remoteAddress = info.remoteAddr?.hostname;
+      const requestSnapshot = snapshotRequest(request);
       const { upgradeHeaders, endResponse, context, namespace } = await hooks.upgrade(request);
       if (endResponse) {
         return endResponse;
@@ -52,9 +56,9 @@ const denoAdapter: Adapter<DenoAdapter, DenoOptions> = (options = {}) => {
       const peers = getPeers(globalPeers, namespace);
       const peer = new DenoPeer({
         ws: upgrade.socket,
-        request,
+        request: requestSnapshot,
         peers,
-        denoInfo: info,
+        remoteAddress,
         context,
         namespace,
         sync: baseUtils.sync,
@@ -81,19 +85,36 @@ const denoAdapter: Adapter<DenoAdapter, DenoOptions> = (options = {}) => {
 
 export default denoAdapter;
 
+// --- utils ---
+
+// Deno releases the underlying request after `Deno.upgradeWebSocket`, so accessing
+// `url` or `headers` later throws "Request closed". Capture them while still valid
+// and expose them through a proxy, delegating everything else to the original request.
+function snapshotRequest(request: Request): Request {
+  const url = request.url;
+  const headers = new Headers(request.headers);
+  return new Proxy(request, {
+    get(target, prop, receiver) {
+      if (prop === "url") return url;
+      if (prop === "headers") return headers;
+      return Reflect.get(target, prop, receiver);
+    },
+  });
+}
+
 // --- peer ---
 
 class DenoPeer extends Peer<{
   ws: WebSocketUpgrade["socket"];
   request: Request;
   peers: Set<DenoPeer>;
-  denoInfo: ServeHandlerInfo;
+  remoteAddress?: string;
   context: PeerContext;
   namespace: string;
   sync?: SyncDriver;
 }> {
   override get remoteAddress() {
-    return this._internal.denoInfo.remoteAddr?.hostname;
+    return this._internal.remoteAddress;
   }
 
   send(data: unknown) {
