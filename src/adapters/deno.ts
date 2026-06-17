@@ -52,7 +52,8 @@ const denoAdapter: Adapter<DenoAdapter, DenoOptions> = (options = {}) => {
         ws: upgrade.socket,
         request,
         peers,
-        denoInfo: info,
+        // Capture eagerly: Deno's `remoteAddr` getter throws once the request is closed
+        remoteAddress: info.remoteAddr?.hostname,
         context,
         namespace,
       });
@@ -84,12 +85,12 @@ class DenoPeer extends Peer<{
   ws: WebSocketUpgrade["socket"];
   request: Request;
   peers: Set<DenoPeer>;
-  denoInfo: ServeHandlerInfo;
+  remoteAddress?: string;
   context: PeerContext;
   namespace: string;
 }> {
   override get remoteAddress() {
-    return this._internal.denoInfo.remoteAddr?.hostname;
+    return this._internal.remoteAddress;
   }
 
   send(data: unknown) {
