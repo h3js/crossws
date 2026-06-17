@@ -23,7 +23,11 @@ describe("uws", () => {
       let resBody = "OK";
       const url = req.getUrl();
       if (url === "/peers") {
-        resBody = JSON.stringify({ peers: [...ws.peers].map((p) => p.id) });
+        resBody = JSON.stringify({
+          peers: [...ws.peers].flatMap(([namespace, peers]) =>
+            [...peers].map((p) => `${namespace}:${p.id}`),
+          ),
+        });
       } else if (url === "/publish") {
         const q = new URLSearchParams(req.getQuery());
         const topic = q.get("topic") || "";

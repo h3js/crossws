@@ -16,15 +16,7 @@
     "noEmit": true,
     "composite": false,
     "isolatedDeclarations": false,
-    "types": [
-      "node",
-      "@cloudflare/workers-types",
-      "deno"
-    ]
+    "types": ["node", "@cloudflare/workers-types", "deno"]
   },
-  "include": [
-    "src",
-    "test",
-    "types"
-  ]
+  "include": ["src", "test", "types"]
 }

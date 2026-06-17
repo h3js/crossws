@@ -29,8 +29,10 @@ const handler = async (request: Request) => {
 // Start HTTP server
 Deno.serve({ hostname: "localhost", port }, handler);
 
-// Start TLS server
-Deno.serve({ hostname: "localhost", port: port + 1, ...getCert() }, handler);
+// Start TLS server (skipped in test runs to avoid port collisions)
+if (!Deno.env.get("PORT")) {
+  Deno.serve({ hostname: "localhost", port: port + 1, ...getCert() }, handler);
+}
 
 function getCert() {
   return {

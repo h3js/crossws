@@ -4,46 +4,16 @@ icon: devicon-plain:cloudflareworkers
 
 # Cloudflare
 
-> Integrate crossws with Cloudflare Workers.
+> Integrate crossws with Cloudflare Workers and Durable Objects.
 
-To integrate crossws with your Cloudflare Workers, you need to check for the `upgrade` header.
+To integrate crossws with Cloudflare [Durable Objects](https://developers.cloudflare.com/durable-objects/api/websockets/) with [pub/sub](/guide/pubsub) and [hibernation API](https://developers.cloudflare.com/durable-objects/best-practices/websockets/#websocket-hibernation-api) support, you need to check for the `upgrade` header and additionally export a DurableObject with crossws adapter hooks integrated.
 
-> [!IMPORTANT]
-> For [pub/sub](/guide/pubsub) support, you need to use [Durable objects](#durable-objects).
-
-```ts
-import crossws from "crossws/adapters/cloudflare";
-
-const ws = crossws({
-  hooks: {
-    message: console.log,
-  },
-});
-
-export default {
-  async fetch(request, env, context) {
-    if (request.headers.get("upgrade") === "websocket") {
-      return ws.handleUpgrade(request, env, context);
-    }
-    return new Response(
-      `<script>new WebSocket("ws://localhost:3000").addEventListener("open", (e) => e.target.send("Hello from client!"));</script>`,
-      { headers: { "content-type": "text/html" } },
-    );
-  },
-};
-```
-
-::read-more
-See [`test/fixture/cloudflare.ts`](https://github.com/unjs/crossws/blob/main/test/fixture/cloudflare.ts) for demo and [`src/adapters/cloudflare.ts`](https://github.com/unjs/crossws/blob/main/src/adapters/cloudflare.ts) for implementation.
-::
-
-## Durable objects
-
-To integrate crossws with Cloudflare [Durable Objects](https://developers.cloudflare.com/durable-objects/api/websockets/) (available on paid plans) with pub/sub and hibernation support, you need to check for the `upgrade` header and additionally export a Durable object with crossws adapter hooks integrated.
+> [!NOTE]
+> If you skip durable object class export or in cases the binding is unavailable, crossws uses a **fallback mode** without pub/sub support in the same worker.
 
 ```js
 import { DurableObject } from "cloudflare:workers";
-import crossws from "crossws/adapters/cloudflare-durable";
+import crossws from "crossws/adapters/cloudflare";
 
 const ws = crossws({
   // bindingName: "$DurableObject",
@@ -83,6 +53,10 @@ export class $DurableObject extends DurableObject {
     return ws.handleDurableMessage(this, client, message);
   }
 
+  webSocketPublish(topic, message, opts) {
+    return ws.handleDurablePublish(this, topic, message, opts);
+  }
+
   webSocketClose(client, code, reason, wasClean) {
     return ws.handleDurableClose(this, client, code, reason, wasClean);
   }
@@ -102,5 +76,15 @@ new_classes = ["$DurableObject"]
 ```
 
 ::read-more
-See [`test/fixture/cloudflare-durable.ts`](https://github.com/unjs/crossws/blob/main/test/fixture/cloudflare-durable.ts) for demo and [`src/adapters/cloudflare-durable.ts`](https://github.com/unjs/crossws/blob/main/src/adapters/cloudflare-durable.ts) for implementation.
+See [`test/fixture/cloudflare-durable.ts`](https://github.com/h3js/crossws/blob/main/test/fixture/cloudflare-durable.ts) for demo and [`src/adapters/cloudflare.ts`](https://github.com/h3js/crossws/blob/main/src/adapters/cloudflare.ts) for implementation.
 ::
+
+### Adapter options
+
+> [!NOTE]
+> By default, crossws uses the durable object class `$DurableObject` from `env` with an instance named `crossws`.
+> You can customize this behavior by providing `resolveDurableStub` option.
+
+- `bindingName`: Durable Object binding name from environment (default: `$DurableObject`).
+- `instanceName`: Durable Object instance name (default: `crossws`).
+- `resolveDurableStub`: Custom function that resolves Durable Object binding to handle the WebSocket upgrade. This option will override `bindingName` and `instanceName`.

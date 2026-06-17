@@ -27,13 +27,10 @@ export class WebSocketSSE extends _EventTarget implements web.WebSocket {
   readonly CLOSING = 2;
   readonly CLOSED = 3;
 
-  /* eslint-disable unicorn/no-null */
   onclose: ((this: web.WebSocket, ev: web.CloseEvent) => any) | null = null;
   onerror: ((this: web.WebSocket, ev: web.Event) => any) | null = null;
   onopen: ((this: web.WebSocket, ev: web.Event) => any) | null = null;
-  onmessage: ((this: web.WebSocket, ev: web.MessageEvent<any>) => any) | null =
-    null;
-  /* eslint-enable unicorn/no-null */
+  onmessage: ((this: web.WebSocket, ev: web.MessageEvent<any>) => any) | null = null;
 
   binaryType: BinaryType = "blob";
   readyState: number = WebSocketSSE.CONNECTING;
@@ -118,7 +115,7 @@ export class WebSocketSSE extends _EventTarget implements web.WebSocket {
 
     this.#sse.addEventListener("close", (_sseEvent) => {
       this.readyState = WebSocketSSE.CLOSED;
-      const event = new Event("close") as web.CloseEvent;
+      const event = new Event("close") as unknown as web.CloseEvent;
       this.onclose?.(event);
       this.dispatchEvent(event);
     });

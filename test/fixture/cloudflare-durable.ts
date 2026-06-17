@@ -1,6 +1,6 @@
 // You can run this demo using `npm run play:cf-durable` in repo
 import { DurableObject } from "cloudflare:workers";
-import cloudflareAdapter from "../../src/adapters/cloudflare-durable.ts";
+import cloudflareAdapter from "../../src/adapters/cloudflare.ts";
 import { createDemo, getIndexHTML, handleDemoRoutes } from "./_shared.ts";
 
 const ws = createDemo(cloudflareAdapter);
@@ -36,10 +36,11 @@ export class $DurableObject extends DurableObject {
     return ws.handleDurableUpgrade(this, request);
   }
 
-  override async webSocketMessage(
-    client: WebSocket,
-    message: ArrayBuffer | string,
-  ): Promise<void> {
+  webSocketPublish(topic: string, message: unknown, opts: any) {
+    return ws.handleDurablePublish(this, topic, message, opts);
+  }
+
+  override async webSocketMessage(client: WebSocket, message: ArrayBuffer | string): Promise<void> {
     return ws.handleDurableMessage(this, client, message);
   }
 

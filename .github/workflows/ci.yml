@@ -26,7 +26,7 @@ jobs:
           deno-version: v2.x
       - run: pnpm install
       - run: pnpm lint
-      - run: pnpm test:types
+      - run: pnpm typecheck
       - run: pnpm build
       - run: pnpm vitest run --coverage
       - uses: codecov/codecov-action@v5

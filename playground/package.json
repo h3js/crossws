@@ -1,0 +1,15 @@
+{
+  "name": "crossws-playground",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "start": "npm run node",
+    "node": "node --watch ./server.mjs",
+    "bun": "bun run --watch ./server.mjs",
+    "deno": "deno run -A --watch ./server.mjs"
+  },
+  "dependencies": {
+    "crossws": "latest",
+    "srvx": "latest"
+  }
+}

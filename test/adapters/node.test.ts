@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe } from "vitest";
+import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { createServer, Server } from "node:http";
 import { getRandomPort, waitForPort } from "get-port-please";
 import nodeAdapter from "../../src/adapters/node";
@@ -16,7 +16,9 @@ describe("node", () => {
       if (req.url === "/peers") {
         return res.end(
           JSON.stringify({
-            peers: [...ws.peers].map((p) => p.id),
+            peers: [...ws.peers].flatMap(([namespace, peers]) =>
+              [...peers].map((p) => `${namespace}:${p.id}`),
+            ),
           }),
         );
       } else if (req.url!.startsWith("/publish")) {
@@ -44,5 +46,14 @@ describe("node", () => {
 
   wsTests(() => url, {
     adapter: "node",
+  });
+
+  test("forcefully terminates when force=true", async () => {
+    ws.closeAll(undefined, undefined, true);
+    for (const [_ns, peers] of ws.peers) {
+      for (const peer of peers) {
+        expect(peer.websocket.readyState).toBe(2 /* CLOSING */);
+      }
+    }
   });
 });

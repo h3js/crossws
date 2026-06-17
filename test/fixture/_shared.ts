@@ -1,8 +1,4 @@
-import {
-  type Adapter,
-  type AdapterInstance,
-  defineHooks,
-} from "../../src/index.ts";
+import { type Adapter, type AdapterInstance, defineHooks } from "../../src/index.ts";
 
 export const getIndexHTML = (opts?: { sse?: boolean }): Promise<string> =>
   import("./_index.html.ts").then((r) => r.default(opts));
@@ -13,7 +9,7 @@ export function createDemo<T extends Adapter<any, any>>(
 ): ReturnType<T> {
   const hooks = defineHooks({
     open(peer) {
-      peer.send(`Welcome to the server ${peer}!`);
+      peer.send(`Welcome to the server ${peer}! (namespace: ${peer.namespace})`);
       peer.subscribe("chat");
       peer.publish("chat", `${peer} joined!`);
     },
@@ -67,17 +63,24 @@ export function createDemo<T extends Adapter<any, any>>(
             return new Response("unauthorized", {
               status: 401,
               statusText: "Unauthorized",
-              headers: { "x-error": "unauthorized" },
+              headers: {
+                "x-error": "unauthorized",
+                "www-authenticate": 'Bearer realm="crossws"',
+              },
             });
           },
         };
       }
-      req.context.test = "1";
+      const headers: Record<string, string> = {
+        "x-powered-by": "cross-ws",
+        "set-cookie": "cross-ws=1; SameSite=None; Secure",
+      };
+      if (req.headers.get("sec-websocket-protocol") === "supported") {
+        headers["sec-websocket-protocol"] = "supported";
+      }
       return {
-        headers: {
-          "x-powered-by": "cross-ws",
-          "set-cookie": "cross-ws=1; SameSite=None; Secure",
-        },
+        context: { test: "1" },
+        headers,
       };
     },
   });
@@ -88,17 +91,14 @@ export function createDemo<T extends Adapter<any, any>>(
   });
 }
 
-export function handleDemoRoutes(
-  ws: AdapterInstance,
-  request: Request,
-): Response | undefined {
+export function handleDemoRoutes(ws: AdapterInstance, request: Request): Response | undefined {
   const url = new URL(request.url);
   if (url.pathname === "/peers") {
-    return new Response(
-      JSON.stringify({
-        peers: [...ws.peers].map((p) => p.id),
-      }),
-    );
+    return Response.json({
+      peers: [...ws.peers].flatMap(([namespace, peers]) =>
+        [...peers].map((p) => `${namespace}:${p.id}`),
+      ),
+    });
   } else if (url.pathname === "/publish") {
     const topic = url.searchParams.get("topic") || "";
     const message = url.searchParams.get("message") || "";

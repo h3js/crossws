@@ -1,13 +1,14 @@
 import type * as web from "../types/web.ts";
-import { randomUUID } from "uncrypto";
-import type { UpgradeRequest } from "./hooks.ts";
 import { kNodeInspect } from "./utils.ts";
+
+export interface PeerContext extends Record<string, unknown> {}
 
 export interface AdapterInternal {
   ws: unknown;
-  request: UpgradeRequest;
+  request: Request;
+  namespace: string;
   peers?: Set<Peer>;
-  context?: Peer["context"];
+  context?: PeerContext;
 }
 
 export abstract class Peer<Internal extends AdapterInternal = AdapterInternal> {
@@ -22,8 +23,12 @@ export abstract class Peer<Internal extends AdapterInternal = AdapterInternal> {
     this._internal = internal;
   }
 
-  get context(): Record<string, unknown> {
+  get context(): PeerContext {
     return (this._internal.context ??= {});
+  }
+
+  get namespace(): string {
+    return this._internal.namespace;
   }
 
   /**
@@ -31,7 +36,7 @@ export abstract class Peer<Internal extends AdapterInternal = AdapterInternal> {
    */
   get id(): string {
     if (!this._id) {
-      this._id = randomUUID();
+      this._id = crypto.randomUUID();
     }
     return this._id;
   }
@@ -42,7 +47,7 @@ export abstract class Peer<Internal extends AdapterInternal = AdapterInternal> {
   }
 
   /** upgrade request */
-  get request(): UpgradeRequest {
+  get request(): Request {
     return this._internal.request;
   }
 
@@ -68,6 +73,11 @@ export abstract class Peer<Internal extends AdapterInternal = AdapterInternal> {
     return this._internal.peers || new Set();
   }
 
+  /** All topics, this peer has been subscribed to. */
+  get topics(): Set<string> {
+    return this._topics;
+  }
+
   abstract close(code?: number, reason?: string): void;
 
   /** Abruptly close the connection */
@@ -86,17 +96,10 @@ export abstract class Peer<Internal extends AdapterInternal = AdapterInternal> {
   }
 
   /** Send a message to the peer. */
-  abstract send(
-    data: unknown,
-    options?: { compress?: boolean },
-  ): number | void | undefined;
+  abstract send(data: unknown, options?: { compress?: boolean }): number | void | undefined;
 
   /** Send message to subscribes of topic */
-  abstract publish(
-    topic: string,
-    data: unknown,
-    options?: { compress?: boolean },
-  ): void;
+  abstract publish(topic: string, data: unknown, options?: { compress?: boolean }): void;
 
   // --- inspect ---
 
@@ -112,15 +115,13 @@ export abstract class Peer<Internal extends AdapterInternal = AdapterInternal> {
     return "WebSocket";
   }
 
-  [kNodeInspect](): Record<string, unknown> {
-    return Object.fromEntries(
-      [
-        ["id", this.id],
-        ["remoteAddress", this.remoteAddress],
-        ["peers", this.peers],
-        ["webSocket", this.websocket],
-      ].filter((p) => p[1]),
-    );
+  [kNodeInspect](): unknown {
+    return {
+      peer: {
+        id: this.id,
+        ip: this.remoteAddress,
+      },
+    };
   }
 }
 

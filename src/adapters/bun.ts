@@ -1,38 +1,43 @@
 import type { WebSocketHandler, ServerWebSocket, Server } from "bun";
 import type { AdapterOptions, AdapterInstance, Adapter } from "../adapter.ts";
 import { toBufferLike } from "../utils.ts";
-import { adapterUtils } from "../adapter.ts";
+import { adapterUtils, getPeers } from "../adapter.ts";
 import { AdapterHookable } from "../hooks.ts";
 import { Message } from "../message.ts";
-import { Peer } from "../peer.ts";
+import { Peer, type PeerContext } from "../peer.ts";
 
 // --- types ---
 
 export interface BunAdapter extends AdapterInstance {
   websocket: WebSocketHandler<ContextData>;
-  handleUpgrade(req: Request, server: Server): Promise<Response | undefined>;
+  handleUpgrade(req: Request, server: Server<ContextData>): Promise<Response | undefined>;
 }
 
 export interface BunOptions extends AdapterOptions {}
 
 type ContextData = {
   peer?: BunPeer;
+  namespace: string;
   request: Request;
-  server?: Server;
-  context: Peer["context"];
+  server?: Server<ContextData>;
+  context: PeerContext;
 };
 
 // --- adapter ---
 
 // https://bun.sh/docs/api/websockets
 const bunAdapter: Adapter<BunAdapter, BunOptions> = (options = {}) => {
+  if (typeof Bun === "undefined") {
+    // eslint-disable-next-line unicorn/prefer-type-error
+    throw new Error("[crossws] Using Bun adapter in an incompatible environment.");
+  }
+
   const hooks = new AdapterHookable(options);
-  const peers = new Set<BunPeer>();
+  const globalPeers = new Map<string, Set<BunPeer>>();
   return {
-    ...adapterUtils(peers),
+    ...adapterUtils(globalPeers),
     async handleUpgrade(request, server) {
-      const { upgradeHeaders, endResponse, context } =
-        await hooks.upgrade(request);
+      const { upgradeHeaders, endResponse, context, namespace } = await hooks.upgrade(request);
       if (endResponse) {
         return endResponse;
       }
@@ -41,6 +46,7 @@ const bunAdapter: Adapter<BunAdapter, BunOptions> = (options = {}) => {
           server,
           request,
           context,
+          namespace,
         } satisfies ContextData,
         headers: upgradeHeaders,
       });
@@ -51,18 +57,21 @@ const bunAdapter: Adapter<BunAdapter, BunOptions> = (options = {}) => {
     },
     websocket: {
       message: (ws, message) => {
+        const peers = getPeers(globalPeers, ws.data.namespace);
         const peer = getPeer(ws, peers);
         hooks.callHook("message", peer, new Message(message, peer));
       },
       open: (ws) => {
+        const peers = getPeers(globalPeers, ws.data.namespace);
         const peer = getPeer(ws, peers);
         peers.add(peer);
         hooks.callHook("open", peer);
       },
-      close: (ws) => {
+      close: (ws, code, reason) => {
+        const peers = getPeers(globalPeers, ws.data.namespace);
         const peer = getPeer(ws, peers);
         peers.delete(peer);
-        hooks.callHook("close", peer, {});
+        hooks.callHook("close", peer, { code, reason });
       },
     },
   };
@@ -72,23 +81,23 @@ export default bunAdapter;
 
 // --- peer ---
 
-function getPeer(
-  ws: ServerWebSocket<ContextData>,
-  peers: Set<BunPeer>,
-): BunPeer {
-  if (ws.data?.peer) {
+function getPeer(ws: ServerWebSocket<ContextData>, peers: Set<BunPeer>): BunPeer {
+  if (ws.data.peer) {
     return ws.data.peer;
   }
-  const peer = new BunPeer({ ws, request: ws.data.request, peers });
-  ws.data = {
-    ...ws.data,
-    peer,
-  };
+  const peer = new BunPeer({
+    ws,
+    request: ws.data.request,
+    peers,
+    namespace: ws.data.namespace,
+  });
+  ws.data.peer = peer;
   return peer;
 }
 
 class BunPeer extends Peer<{
   ws: ServerWebSocket<ContextData>;
+  namespace: string;
   request: Request;
   peers: Set<BunPeer>;
 }> {
@@ -96,7 +105,7 @@ class BunPeer extends Peer<{
     return this._internal.ws.remoteAddress;
   }
 
-  override get context(): Peer["context"] {
+  override get context(): PeerContext {
     return this._internal.ws.data.context;
   }
 
@@ -104,23 +113,17 @@ class BunPeer extends Peer<{
     return this._internal.ws.send(toBufferLike(data), options?.compress);
   }
 
-  publish(
-    topic: string,
-    data: unknown,
-    options?: { compress?: boolean },
-  ): number {
-    return this._internal.ws.publish(
-      topic,
-      toBufferLike(data),
-      options?.compress,
-    );
+  publish(topic: string, data: unknown, options?: { compress?: boolean }): number {
+    return this._internal.ws.publish(topic, toBufferLike(data), options?.compress);
   }
 
   override subscribe(topic: string): void {
+    this._topics.add(topic);
     this._internal.ws.subscribe(topic);
   }
 
   override unsubscribe(topic: string): void {
+    this._topics.delete(topic);
     this._internal.ws.unsubscribe(topic);
   }
 
