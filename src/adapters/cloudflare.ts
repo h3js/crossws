@@ -219,7 +219,7 @@ class CloudflareDurablePeer extends Peer<{
     setAttachedState(this._internal.ws, state);
   }
 
-  publish(topic: string, data: unknown): void {
+  _publish(topic: string, data: unknown): void {
     const websockets = this.#getwebsockets();
     if (websockets.length < 2 /* 1 is self! */) {
       return;
@@ -285,7 +285,7 @@ class CloudflareFallbackPeer extends Peer<{
     return 0;
   }
 
-  publish(_topic: string, _message: any): void {
+  _publish(_topic: string, _message: any): void {
     console.warn("[crossws] [cloudflare] pub/sub support requires Durable Objects.");
   }
 

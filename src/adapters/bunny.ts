@@ -5,6 +5,7 @@ import { AdapterHookable } from "../hooks.ts";
 import { Message } from "../message.ts";
 import { WSError } from "../error.ts";
 import { Peer, type PeerContext } from "../peer.ts";
+import type { SyncDriver } from "../sync.ts";
 
 // --- types ---
 
@@ -41,8 +42,9 @@ interface BunnyUpgradeResponse {
 const bunnyAdapter: Adapter<BunnyAdapter, BunnyOptions> = (options = {}) => {
   const hooks = new AdapterHookable(options);
   const globalPeers = new Map<string, Set<BunnyPeer>>();
+  const baseUtils = adapterUtils(globalPeers, options);
   return {
-    ...adapterUtils(globalPeers),
+    ...baseUtils,
     handleUpgrade: async (request: Request & { upgradeWebSocket?: any }) => {
       if (!request.upgradeWebSocket || typeof request.upgradeWebSocket !== "function") {
         throw new Error(
@@ -85,6 +87,7 @@ const bunnyAdapter: Adapter<BunnyAdapter, BunnyOptions> = (options = {}) => {
         remoteAddress,
         peers,
         context,
+        sync: baseUtils.sync,
       });
       peers.add(peer);
 
@@ -125,6 +128,7 @@ class BunnyPeer extends Peer<{
   remoteAddress: string | undefined;
   peers: Set<BunnyPeer>;
   context: PeerContext;
+  sync?: SyncDriver;
 }> {
   override get remoteAddress() {
     return this._internal.remoteAddress;
@@ -134,7 +138,7 @@ class BunnyPeer extends Peer<{
     return this._internal.ws.send(toBufferLike(data));
   }
 
-  publish(topic: string, data: unknown) {
+  _publish(topic: string, data: unknown) {
     const dataBuff = toBufferLike(data);
     for (const peer of this._internal.peers) {
       if (peer !== this && peer._topics.has(topic)) {

@@ -33,6 +33,18 @@ export function toBufferLike(val: any): BufferLike {
   return val;
 }
 
+/**
+ * Normalize an arbitrary publish payload to a value a sync driver can relay
+ * (a string or a `Uint8Array`).
+ */
+export function serializeMessage(val: any): string | Uint8Array {
+  const data = toBufferLike(val);
+  if (typeof data === "string") {
+    return data;
+  }
+  return data instanceof Uint8Array ? data : new Uint8Array(data);
+}
+
 export function toString(val: any): string {
   if (typeof val === "string") {
     return val;

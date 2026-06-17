@@ -5,6 +5,7 @@ import { AdapterHookable } from "../hooks.ts";
 import { Message } from "../message.ts";
 import { WSError } from "../error.ts";
 import { Peer, type PeerContext } from "../peer.ts";
+import type { SyncDriver } from "../sync.ts";
 
 // --- types ---
 
@@ -32,8 +33,9 @@ const denoAdapter: Adapter<DenoAdapter, DenoOptions> = (options = {}) => {
 
   const hooks = new AdapterHookable(options);
   const globalPeers = new Map<string, Set<DenoPeer>>();
+  const baseUtils = adapterUtils(globalPeers, options);
   return {
-    ...adapterUtils(globalPeers),
+    ...baseUtils,
     handleUpgrade: async (request, info) => {
       const { upgradeHeaders, endResponse, context, namespace } = await hooks.upgrade(request);
       if (endResponse) {
@@ -55,6 +57,7 @@ const denoAdapter: Adapter<DenoAdapter, DenoOptions> = (options = {}) => {
         denoInfo: info,
         context,
         namespace,
+        sync: baseUtils.sync,
       });
       peers.add(peer);
       upgrade.socket.addEventListener("open", () => {
@@ -87,6 +90,7 @@ class DenoPeer extends Peer<{
   denoInfo: ServeHandlerInfo;
   context: PeerContext;
   namespace: string;
+  sync?: SyncDriver;
 }> {
   override get remoteAddress() {
     return this._internal.denoInfo.remoteAddr?.hostname;
@@ -96,7 +100,7 @@ class DenoPeer extends Peer<{
     return this._internal.ws.send(toBufferLike(data));
   }
 
-  publish(topic: string, data: unknown) {
+  _publish(topic: string, data: unknown) {
     const dataBuff = toBufferLike(data);
     for (const peer of this._internal.peers) {
       if (peer !== this && peer._topics.has(topic)) {

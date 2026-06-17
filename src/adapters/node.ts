@@ -5,6 +5,7 @@ import { AdapterHookable } from "../hooks.ts";
 import { Message } from "../message.ts";
 import { WSError } from "../error.ts";
 import { Peer, type PeerContext } from "../peer.ts";
+import type { SyncDriver } from "../sync.ts";
 
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
@@ -47,6 +48,7 @@ const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
 
   const hooks = new AdapterHookable(options);
   const globalPeers = new Map<string, Set<NodePeer>>();
+  const baseUtils = adapterUtils(globalPeers, options);
 
   const wss: WebSocketServer =
     options.wss ||
@@ -65,6 +67,7 @@ const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
       peers,
       nodeReq,
       namespace: nodeReq._namespace,
+      sync: baseUtils.sync,
     });
     peers.add(peer);
     hooks.callHook("open", peer); // ws is already open
@@ -100,7 +103,7 @@ const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
   });
 
   return {
-    ...adapterUtils(globalPeers),
+    ...baseUtils,
     handleUpgrade: async (nodeReq, socket, head, webRequest) => {
       const request = webRequest || new NodeReqProxy(nodeReq);
 
@@ -149,6 +152,7 @@ class NodePeer extends Peer<{
   namespace: string;
   nodeReq: IncomingMessage;
   ws: WebSocketT & { _peer?: NodePeer };
+  sync?: SyncDriver;
 }> {
   override get remoteAddress() {
     return this._internal.nodeReq.socket?.remoteAddress;
@@ -169,7 +173,7 @@ class NodePeer extends Peer<{
     return 0;
   }
 
-  publish(topic: string, data: unknown, options?: { compress?: boolean }): void {
+  _publish(topic: string, data: unknown, options?: { compress?: boolean }): void {
     const dataBuff = toBufferLike(data);
     const isBinary = typeof data !== "string";
     const sendOptions = {

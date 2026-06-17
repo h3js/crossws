@@ -6,6 +6,9 @@ export type { Hooks, ResolveHooks } from "./hooks.ts";
 export { defineWebSocketAdapter } from "./adapter.ts";
 export type { Adapter, AdapterInstance, AdapterOptions } from "./adapter.ts";
 
+// Sync
+export type { SyncAdapter, SyncDriver, SyncMessage } from "./sync.ts";
+
 // Message
 export type { Message } from "./message.ts";
 

@@ -12,6 +12,7 @@ export default defineBuildConfig({
       type: "bundle",
       input: [
         "src/index.ts",
+        "src/sync.ts",
         "src/websocket/native.ts",
         "src/websocket/node.ts",
         "src/websocket/sse.ts",

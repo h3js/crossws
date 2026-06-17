@@ -1,5 +1,6 @@
 import type * as web from "../types/web.ts";
-import { kNodeInspect } from "./utils.ts";
+import type { SyncDriver } from "./sync.ts";
+import { kNodeInspect, serializeMessage } from "./utils.ts";
 
 export interface PeerContext extends Record<string, unknown> {}
 
@@ -9,6 +10,8 @@ export interface AdapterInternal {
   namespace: string;
   peers?: Set<Peer>;
   context?: PeerContext;
+  /** Optional sync backplane used to relay publishes to other instances. */
+  sync?: SyncDriver;
 }
 
 export abstract class Peer<Internal extends AdapterInternal = AdapterInternal> {
@@ -98,8 +101,27 @@ export abstract class Peer<Internal extends AdapterInternal = AdapterInternal> {
   /** Send a message to the peer. */
   abstract send(data: unknown, options?: { compress?: boolean }): number | void | undefined;
 
-  /** Send message to subscribes of topic */
-  abstract publish(topic: string, data: unknown, options?: { compress?: boolean }): void;
+  /**
+   * Send a message to subscribers of a topic.
+   *
+   * When a sync backplane is configured, the message is also relayed to the
+   * other crossws instances so their subscribers receive it too.
+   */
+  publish(topic: string, data: unknown, options?: { compress?: boolean }): void {
+    this._publish(topic, data, options);
+    this._internal.sync?.publish?.({
+      namespace: this.namespace,
+      topic,
+      data: serializeMessage(data),
+    });
+  }
+
+  /**
+   * Adapter-specific, relay-free local fan-out to subscribers of a topic
+   * (excludes this peer). Implemented by each adapter; used both by
+   * {@link Peer.publish} and by the internal cross-instance delivery path.
+   */
+  abstract _publish(topic: string, data: unknown, options?: { compress?: boolean }): void;
 
   // --- inspect ---
 

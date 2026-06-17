@@ -5,6 +5,7 @@ import { adapterUtils, getPeers } from "../adapter.ts";
 import { AdapterHookable } from "../hooks.ts";
 import { Message } from "../message.ts";
 import { Peer, type PeerContext } from "../peer.ts";
+import type { SyncDriver } from "../sync.ts";
 
 // --- types ---
 
@@ -34,8 +35,9 @@ const bunAdapter: Adapter<BunAdapter, BunOptions> = (options = {}) => {
 
   const hooks = new AdapterHookable(options);
   const globalPeers = new Map<string, Set<BunPeer>>();
+  const baseUtils = adapterUtils(globalPeers, options);
   return {
-    ...adapterUtils(globalPeers),
+    ...baseUtils,
     async handleUpgrade(request, server) {
       const { upgradeHeaders, endResponse, context, namespace } = await hooks.upgrade(request);
       if (endResponse) {
@@ -58,18 +60,18 @@ const bunAdapter: Adapter<BunAdapter, BunOptions> = (options = {}) => {
     websocket: {
       message: (ws, message) => {
         const peers = getPeers(globalPeers, ws.data.namespace);
-        const peer = getPeer(ws, peers);
+        const peer = getPeer(ws, peers, baseUtils.sync);
         hooks.callHook("message", peer, new Message(message, peer));
       },
       open: (ws) => {
         const peers = getPeers(globalPeers, ws.data.namespace);
-        const peer = getPeer(ws, peers);
+        const peer = getPeer(ws, peers, baseUtils.sync);
         peers.add(peer);
         hooks.callHook("open", peer);
       },
       close: (ws, code, reason) => {
         const peers = getPeers(globalPeers, ws.data.namespace);
-        const peer = getPeer(ws, peers);
+        const peer = getPeer(ws, peers, baseUtils.sync);
         peers.delete(peer);
         hooks.callHook("close", peer, { code, reason });
       },
@@ -81,7 +83,11 @@ export default bunAdapter;
 
 // --- peer ---
 
-function getPeer(ws: ServerWebSocket<ContextData>, peers: Set<BunPeer>): BunPeer {
+function getPeer(
+  ws: ServerWebSocket<ContextData>,
+  peers: Set<BunPeer>,
+  sync?: SyncDriver,
+): BunPeer {
   if (ws.data.peer) {
     return ws.data.peer;
   }
@@ -90,6 +96,7 @@ function getPeer(ws: ServerWebSocket<ContextData>, peers: Set<BunPeer>): BunPeer
     request: ws.data.request,
     peers,
     namespace: ws.data.namespace,
+    sync,
   });
   ws.data.peer = peer;
   return peer;
@@ -100,6 +107,7 @@ class BunPeer extends Peer<{
   namespace: string;
   request: Request;
   peers: Set<BunPeer>;
+  sync?: SyncDriver;
 }> {
   override get remoteAddress(): string {
     return this._internal.ws.remoteAddress;
@@ -113,7 +121,7 @@ class BunPeer extends Peer<{
     return this._internal.ws.send(toBufferLike(data), options?.compress);
   }
 
-  publish(topic: string, data: unknown, options?: { compress?: boolean }): number {
+  _publish(topic: string, data: unknown, options?: { compress?: boolean }): number {
     return this._internal.ws.publish(topic, toBufferLike(data), options?.compress);
   }
 
