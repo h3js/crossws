@@ -23,6 +23,8 @@ export interface RedisClientLike {
   subscribe(channel: string, listener?: (message: string, channel: string) => void): unknown;
   /** ioredis: shared `"message"` event (listener receives `(channel, message)`). */
   on?(event: "message", listener: (channel: string, message: string) => void): unknown;
+  /** ioredis: detach the `"message"` listener on {@link SyncDriver.close}. */
+  off?(event: "message", listener: (channel: string, message: string) => void): unknown;
   /** node-redis: a `duplicate()`d client starts disconnected and must `connect()`. */
   connect?(): unknown;
   /** Create a second connection for `SUBSCRIBE` (which blocks the connection). */
@@ -85,8 +87,14 @@ export function redis(opts: {
       : opts.connector === "node-redis";
   return ({ id }) => {
     const subscriber = opts.client.duplicate();
+    // Tracks whether subscribe() ran so close() doesn't quit() a node-redis
+    // subscriber that was never connect()ed (which throws on an unopened client).
+    let started = false;
+    // ioredis "message" listener — kept so close() can detach it.
+    let onMessage: ((channel: string, message: string) => void) | undefined;
     return {
       async subscribe(deliver) {
+        started = true;
         const handle = (raw: string) => {
           const envelope = decodeEnvelope(raw);
           if (!envelope || envelope.id === id) {
@@ -101,11 +109,12 @@ export function redis(opts: {
           await subscriber.subscribe(channel, (raw) => handle(raw));
         } else {
           // ioredis: a shared `"message"` event (args are `(channel, message)`).
-          subscriber.on?.("message", (ch, raw) => {
+          onMessage = (ch, raw) => {
             if (ch === channel) {
               handle(raw);
             }
-          });
+          };
+          subscriber.on?.("message", onMessage);
           await subscriber.subscribe(channel);
         }
       },
@@ -113,8 +122,21 @@ export function redis(opts: {
         await opts.client.publish(channel, encodeEnvelope(id, msg));
       },
       async close() {
-        // Tear down the dedicated subscriber connection opened above.
-        await subscriber.quit?.();
+        // Tear down the dedicated subscriber connection opened in subscribe().
+        // Guard on `started`: a never-subscribed node-redis client is still
+        // disconnected, and quit() on it throws. Best-effort, so swallow errors.
+        if (!started) {
+          return;
+        }
+        if (onMessage) {
+          subscriber.off?.("message", onMessage);
+          onMessage = undefined;
+        }
+        try {
+          await subscriber.quit?.();
+        } catch (error) {
+          console.error("[crossws] sync redis close failed:", error);
+        }
       },
     };
   };

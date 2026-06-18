@@ -21,6 +21,18 @@ export function decodeEnvelope(raw: string): { id: string; msg: SyncMessage } | 
       id: string;
       msg: { namespace: string; topic: string; binary?: boolean; data: string };
     };
+    // Reject anything that parses but isn't a well-formed envelope (e.g. a
+    // foreign writer on the same channel, or `{}`), so callers never deliver a
+    // SyncMessage with undefined fields.
+    if (
+      !parsed ||
+      typeof parsed.id !== "string" ||
+      !parsed.msg ||
+      typeof parsed.msg.topic !== "string" ||
+      typeof parsed.msg.namespace !== "string"
+    ) {
+      return undefined;
+    }
     return {
       id: parsed.id,
       msg: {

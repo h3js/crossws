@@ -1,5 +1,6 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 import {
+  decodeEnvelope,
   pgsql,
   redis,
   type PostgresClientLike,
@@ -238,6 +239,85 @@ describe("sync (redis, connector escape hatch)", () => {
 
     await driver.close?.();
     expect(subscriber.connected).toBe(false);
+  });
+});
+
+describe("sync (driver guards)", () => {
+  test("pgsql rejects a pg Pool (rotating connections break LISTEN)", () => {
+    // A Pool is structurally a Client (query/on) but exposes pool-only counters.
+    const pool = {
+      query: () => {},
+      on: () => {},
+      idleCount: 0,
+      totalCount: 0,
+      waitingCount: 0,
+    } as unknown as PostgresClientLike;
+    expect(() => pgsql({ client: pool, channel: "my-app" })).toThrow(/dedicated `Client`/);
+  });
+
+  test("pgsql accepts a plain Client (no pool counters)", () => {
+    const client: PostgresClientLike = { query: () => {}, on: () => {} };
+    expect(() => pgsql({ client, channel: "my-app" })).not.toThrow();
+  });
+
+  test("pgsql rejects a channel name longer than 63 bytes", () => {
+    const client: PostgresClientLike = { query: () => {}, on: () => {} };
+    expect(() => pgsql({ client, channel: "x".repeat(64) })).toThrow(/at most 63 bytes/);
+    expect(() => pgsql({ client, channel: "x".repeat(63) })).not.toThrow();
+  });
+
+  test("redis publish rejection is isolated (driver publish rejects, not the caller)", async () => {
+    // The relay is fire-and-forget at the call sites (peer/adapter); the driver's
+    // publish itself still rejects on a failing client — assert that surfaces as a
+    // rejection the callers can catch rather than swallow silently here.
+    const client: RedisClientLike = {
+      duplicate: () => client,
+      publish: () => {
+        throw new Error("connection lost");
+      },
+      subscribe: () => {},
+      on: () => {},
+    };
+    const driver = redis({ client, channel: "my-app" })({ id: "a" });
+    await expect(driver.publish({ namespace: "", topic: "t", data: "x" })).rejects.toThrow(
+      "connection lost",
+    );
+  });
+
+  test("redis close before subscribe does not quit an unconnected subscriber", async () => {
+    const quit = vi.fn();
+    const client = {
+      pSubscribe: () => {}, // node-redis flavor
+      duplicate: () => ({
+        connect: () => {},
+        subscribe: () => {},
+        quit,
+      }),
+      publish: () => {},
+      subscribe: () => {},
+    } as unknown as RedisClientLike;
+    const driver = redis({ client, channel: "my-app" })({ id: "a" });
+    // Never subscribed → close must be a no-op (quit on an unconnected node-redis
+    // client throws), so this must not reject and must not call quit().
+    await expect(driver.close?.()).resolves.toBeUndefined();
+    expect(quit).not.toHaveBeenCalled();
+  });
+});
+
+describe("sync (envelope decoding)", () => {
+  test("decodeEnvelope rejects malformed / partial payloads", () => {
+    expect(decodeEnvelope("not json")).toBeUndefined();
+    expect(decodeEnvelope("123")).toBeUndefined();
+    expect(decodeEnvelope("null")).toBeUndefined();
+    expect(decodeEnvelope("{}")).toBeUndefined();
+    expect(decodeEnvelope(JSON.stringify({ id: "a", msg: {} }))).toBeUndefined();
+    // foreign object missing topic/namespace
+    expect(decodeEnvelope(JSON.stringify({ id: "a", msg: { topic: "t" } }))).toBeUndefined();
+  });
+
+  test("decodeEnvelope accepts a well-formed envelope", () => {
+    const raw = JSON.stringify({ id: "a", msg: { namespace: "", topic: "t", data: "x" } });
+    expect(decodeEnvelope(raw)).toEqual({ id: "a", msg: { namespace: "", topic: "t", data: "x" } });
   });
 });
 

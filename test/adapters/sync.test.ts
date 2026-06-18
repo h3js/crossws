@@ -46,10 +46,8 @@ describe("sync (broadcastChannel)", () => {
   });
 
   afterAll(async () => {
-    a.ws.closeAll();
-    b.ws.closeAll();
-    a.ws.sync?.close?.();
-    b.ws.sync?.close?.();
+    // `ws.close()` closes peers and the sync backplane in one call.
+    await Promise.all([a.ws.close(), b.ws.close()]);
     await Promise.all([a.close(), b.close()]);
   });
 
@@ -117,11 +115,10 @@ describe("sync (broadcastChannel + uWebSockets native pub/sub)", () => {
     [a, b] = await Promise.all([createUwsInstance(sync), createUwsInstance(sync)]);
   });
 
-  afterAll(() => {
+  afterAll(async () => {
+    await Promise.all([a.ws.close(), b.ws.close()]);
     a.close();
     b.close();
-    a.ws.sync?.close?.();
-    b.ws.sync?.close?.();
   });
 
   test("native publish on one instance reaches a subscriber on another", async () => {
@@ -135,6 +132,48 @@ describe("sync (broadcastChannel + uWebSockets native pub/sub)", () => {
     await clientB.send("back over uws");
     expect(await clientA.next()).toBe("back over uws");
     expect(clientA.messages).not.toContain("hello over uws");
+  });
+});
+
+describe("sync (adapter close)", () => {
+  test("close() closes connected peers and tears down the sync backplane", async () => {
+    let syncClosed = false;
+    const sync: SyncAdapter = () => ({
+      subscribe() {},
+      publish() {},
+      close() {
+        syncClosed = true;
+      },
+    });
+
+    const inst = await createInstance(sync);
+    try {
+      const client = await wsConnect(inst.url);
+      // Let the open hook run so the peer is registered on the server.
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      const peerCount = [...inst.ws.peers.values()].reduce((n, set) => n + set.size, 0);
+      expect(peerCount).toBe(1);
+
+      const closed = new Promise<number>((resolve) =>
+        client.ws.addEventListener("close", (event) => resolve(event.code)),
+      );
+
+      await inst.ws.close(1000, "shutting down");
+
+      // The peer's socket is closed (the client observes the close)...
+      expect(await closed).toBe(1000);
+      // ...and the backplane was released.
+      expect(syncClosed).toBe(true);
+    } finally {
+      await inst.close();
+    }
+  });
+
+  test("close() resolves even without a sync backplane", async () => {
+    const inst = await createInstance();
+    await wsConnect(inst.url);
+    await expect(inst.ws.close()).resolves.toBeUndefined();
+    await inst.close();
   });
 });
 

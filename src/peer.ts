@@ -109,11 +109,22 @@ export abstract class Peer<Internal extends AdapterInternal = AdapterInternal> {
    */
   publish(topic: string, data: unknown, options?: { compress?: boolean }): void {
     this._publish(topic, data, options);
-    this._internal.sync?.publish?.({
-      namespace: this.namespace,
-      topic,
-      data: serializeMessage(data),
-    });
+    const sync = this._internal.sync;
+    if (sync) {
+      // Fire-and-forget relay: `publish` is sync-returning, but a driver's
+      // publish may be async and reject (e.g. a dropped Redis/Postgres
+      // connection). Isolate that here so a transient backplane error logs
+      // instead of surfacing as an unhandled rejection (which crashes Node).
+      Promise.resolve(
+        sync.publish({
+          namespace: this.namespace,
+          topic,
+          data: serializeMessage(data),
+        }),
+      ).catch((error) => {
+        console.error("[crossws] sync publish failed:", error);
+      });
+    }
   }
 
   /**

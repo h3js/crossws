@@ -19,6 +19,11 @@ export function adapterUtils(
   // a second `_publish` would re-broadcast app-wide and deliver every message
   // again. Loop-based adapters fan out within a single namespace Set, so they
   // must visit every namespace.
+  //
+  // Caveat: because native `ws.publish` is app-wide, a *namespaced* publish on a
+  // native adapter still reaches same-topic subscribers in other namespaces —
+  // namespace isolation is best-effort there (true on the local path and, via
+  // the sync relay, cross-instance too). Loop-based adapters honor namespaces.
   const localPublish = (
     topic: string,
     message: any,
@@ -70,11 +75,32 @@ export function adapterUtils(
     sync,
     publish(topic: string, message: any, options) {
       localPublish(topic, message, options);
-      sync?.publish({
-        namespace: options?.namespace || "",
-        topic,
-        data: serializeMessage(message),
-      });
+      if (sync) {
+        // Fire-and-forget relay — isolate driver publish rejections (e.g. a
+        // dropped backplane connection) so they log instead of bubbling up as
+        // an unhandled rejection. Mirrors the inbound delivery isolation above.
+        Promise.resolve(
+          sync.publish({
+            namespace: options?.namespace || "",
+            topic,
+            data: serializeMessage(message),
+          }),
+        ).catch((error) => {
+          console.error("[crossws] sync publish failed:", error);
+        });
+      }
+    },
+    async close(code, reason) {
+      // Gracefully close every connected peer via the adapter-specific
+      // `Peer.close`, then tear down the sync backplane. Peers are removed from
+      // `globalPeers` by their async close handlers (after the socket actually
+      // closes), so iterating the live Sets here is safe.
+      for (const peers of globalPeers.values()) {
+        for (const peer of peers) {
+          peer.close(code, reason);
+        }
+      }
+      await sync?.close?.();
     },
   } satisfies AdapterInstance;
 }
@@ -103,7 +129,19 @@ export interface AdapterInstance {
     data: unknown,
     options?: { compress?: boolean; namespace?: string },
   ) => void;
-  /** Sync backplane driver, present when an adapter is created with `sync`. */
+  /**
+   * Gracefully shut the adapter down: close every connected peer (with the
+   * optional `code` / `reason`) and tear down the {@link AdapterInstance.sync}
+   * backplane. Any underlying server you created (e.g. an `http.Server` or a
+   * `WebSocketServer` passed via options) stays yours to close.
+   */
+  readonly close: (code?: number, reason?: string) => Promise<void>;
+  /**
+   * Sync backplane driver, present when an adapter is created with `sync`.
+   *
+   * Closed automatically by {@link AdapterInstance.close}; it leaves any
+   * user-owned client (Redis/Postgres) connected.
+   */
   readonly sync?: SyncDriver;
 }
 
