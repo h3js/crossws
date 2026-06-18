@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 import {
+  cluster,
   decodeEnvelope,
   pgsql,
   redis,
@@ -239,6 +240,114 @@ describe("sync (redis, connector escape hatch)", () => {
 
     await driver.close?.();
     expect(subscriber.connected).toBe(false);
+  });
+});
+
+// --- Cluster IPC mock ------------------------------------------------------
+
+// Emulates the node:cluster topology: each worker has its own `process`-like
+// object that can only `send()` to the primary, and the primary (the hub)
+// rebroadcasts every relay message to all workers — exactly what
+// setupPrimaryCluster() installs. Workers never talk to each other directly.
+interface FakeProc {
+  send(message: unknown): void;
+  on(event: "message", listener: (message: unknown) => void): void;
+  off(event: "message", listener: (message: unknown) => void): void;
+}
+
+class ClusterHub {
+  private workers: { deliver(message: unknown): void }[] = [];
+
+  fork(): FakeProc {
+    const listeners = new Set<(message: unknown) => void>();
+    this.workers.push({
+      deliver: (message) => {
+        for (const listener of listeners) {
+          listener(message);
+        }
+      },
+    });
+    return {
+      // worker → primary → rebroadcast to all workers (incl. sender)
+      send: (message) => {
+        for (const worker of this.workers) {
+          worker.deliver(message);
+        }
+      },
+      on: (_event, listener) => listeners.add(listener),
+      off: (_event, listener) => listeners.delete(listener),
+    };
+  }
+}
+
+// Instantiate a cluster driver as if running inside a forked worker: the driver
+// captures `globalThis.process` at construction, so swap in the fake worker
+// process just for that call, then restore it.
+function clusterWorker(channel: string, hub: ClusterHub, id: string) {
+  const real = globalThis.process;
+  globalThis.process = hub.fork() as unknown as typeof globalThis.process;
+  try {
+    return cluster({ channel })({ id });
+  } finally {
+    globalThis.process = real;
+  }
+}
+
+describe("sync (cluster, node:cluster IPC)", () => {
+  async function relayPair(channel = "crossws:test") {
+    const hub = new ClusterHub();
+    const a = clusterWorker(channel, hub, "a");
+    const b = clusterWorker(channel, hub, "b");
+    const onA: SyncMessage[] = [];
+    const onB: SyncMessage[] = [];
+    await a.subscribe((m) => onA.push(m));
+    await b.subscribe((m) => onB.push(m));
+    return { a, b, onA, onB };
+  }
+
+  test("publish on one worker reaches the other, not itself", async () => {
+    const { a, onA, onB } = await relayPair();
+
+    await a.publish({ namespace: "", topic: "chat", data: "hello" });
+
+    expect(onB).toEqual([{ namespace: "", topic: "chat", data: "hello" }]);
+    expect(onA).toEqual([]); // echo suppressed by instance id
+  });
+
+  test("relay is bidirectional and binary survives JSON IPC", async () => {
+    const { a, b, onA, onB } = await relayPair();
+    const data = new Uint8Array([0, 1, 2, 254, 255]);
+
+    await a.publish({ namespace: "ns", topic: "t", data });
+    await b.publish({ namespace: "ns", topic: "t", data: "from-b" });
+
+    expect(onA).toEqual([{ namespace: "ns", topic: "t", data: "from-b" }]);
+    expect(onB).toHaveLength(1);
+    expect([...(onB[0]!.data as Uint8Array)]).toEqual([...data]);
+  });
+
+  test("a foreign channel on the same process tree does not bridge", async () => {
+    const hub = new ClusterHub();
+    const a = clusterWorker("chan-a", hub, "a");
+    const b = clusterWorker("chan-b", hub, "b");
+    const onB: SyncMessage[] = [];
+    await b.subscribe((m) => onB.push(m));
+
+    await a.publish({ namespace: "", topic: "t", data: "x" });
+
+    expect(onB).toEqual([]);
+  });
+
+  test("subscribe throws when not running in a forked worker", async () => {
+    const real = globalThis.process;
+    // A primary / standalone process has no `send`.
+    globalThis.process = { on() {}, off() {} } as unknown as typeof globalThis.process;
+    try {
+      const driver = cluster({ channel: "my-app" })({ id: "a" });
+      expect(() => driver.subscribe(() => {})).toThrow(/worker forked by node:cluster/);
+    } finally {
+      globalThis.process = real;
+    }
   });
 });
 
