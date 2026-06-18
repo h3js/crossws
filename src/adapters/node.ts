@@ -171,7 +171,10 @@ class NodePeer extends Peer<{
 
   publish(topic: string, data: unknown, options?: { compress?: boolean }): void {
     const dataBuff = toBufferLike(data);
-    const isBinary = typeof data !== "string";
+    // Derive `isBinary` from the serialized buffer, not the raw input: a plain
+    // object/number is normalized to a JSON/text string by `toBufferLike`, so it
+    // must be sent as text. (Matches the uWS adapter's handling.)
+    const isBinary = typeof dataBuff !== "string";
     const sendOptions = {
       compress: options?.compress,
       binary: isBinary,
