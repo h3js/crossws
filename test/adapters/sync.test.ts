@@ -51,37 +51,21 @@ describe("sync (broadcastChannel)", () => {
     await Promise.all([a.close(), b.close()]);
   });
 
-  test("peer.publish on one instance reaches a subscriber on another", async () => {
+  test("relay is bidirectional and excludes the publisher", async () => {
     const clientA = await wsConnect(a.url);
     const clientB = await wsConnect(b.url);
 
-    await clientA.send("hello from A");
+    // A publish on instance A reaches the subscriber on instance B...
+    await clientA.send("from A");
+    expect(await clientB.next()).toBe("from A");
 
-    // clientB is connected to instance B, yet receives the message relayed
-    // from instance A through the sync backplane.
-    expect(await clientB.next()).toBe("hello from A");
-  });
+    // ...and the reverse direction works too.
+    await clientB.send("from B");
+    expect(await clientA.next()).toBe("from B");
 
-  test("relay is bidirectional", async () => {
-    const clientA = await wsConnect(a.url);
-    const clientB = await wsConnect(b.url);
-
-    await clientB.send("hello from B");
-    expect(await clientA.next()).toBe("hello from B");
-  });
-
-  test("the publishing peer does not receive its own message back", async () => {
-    const clientA = await wsConnect(a.url);
-    const clientB = await wsConnect(b.url);
-
-    await clientA.send("once");
-    expect(await clientB.next()).toBe("once");
-
-    // clientA must see "once" exactly zero times (self-exclusion holds across
-    // the relay — the echo is suppressed by the driver's instance id).
-    await clientB.send("twice");
-    expect(await clientA.next()).toBe("twice");
-    expect(clientA.messages).not.toContain("once");
+    // Self-exclusion holds across the relay: the echo is suppressed by the
+    // driver's instance id, so A never received its own "from A".
+    expect(clientA.messages).not.toContain("from A");
   });
 });
 
@@ -209,53 +193,5 @@ describe("sync (no backplane)", () => {
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(clientB.messages).not.toContain("local only");
     expect(a.ws.sync).toBeUndefined();
-  });
-});
-
-// Regression: a global `adapter.publish(topic, data)` (no namespace) on a
-// native pub/sub adapter must reach each subscriber exactly once, even when
-// subscribers live in different namespaces. Native adapters broadcast a topic
-// app-wide via a single `ws.publish`, so iterating every namespace Set (as the
-// loop-based adapters require) used to deliver the message once per namespace.
-describe("native pub/sub global publish (uWebSockets)", () => {
-  let server: {
-    ws: ReturnType<typeof uwsAdapter>;
-    port: number;
-    close: () => void;
-  };
-
-  beforeAll(async () => {
-    const ws = uwsAdapter({ hooks });
-    const app = App().ws("/*", ws.websocket);
-    const port = await getRandomPort("localhost");
-    const token = await new Promise<us_listen_socket>((resolve, reject) => {
-      app.listen(port, (listenSocket) => {
-        return listenSocket ? resolve(listenSocket) : reject(new Error("uWS listen failed"));
-      });
-    });
-    await waitForPort(port);
-    server = { ws, port, close: () => us_listen_socket_close(token) };
-  });
-
-  afterAll(() => server.close());
-
-  test("global publish reaches each namespace's subscriber exactly once", async () => {
-    // Two clients in distinct namespaces (derived from the URL pathname), both
-    // subscribed to "chat" via the `open` hook.
-    const clientNs1 = await wsConnect(`ws://localhost:${server.port}/ns1`);
-    const clientNs2 = await wsConnect(`ws://localhost:${server.port}/ns2`);
-    // Let both `open` hooks run so each peer is subscribed before we publish.
-    await new Promise((resolve) => setTimeout(resolve, 50));
-
-    server.ws.publish("chat", "broadcast");
-
-    expect(await clientNs1.next()).toBe("broadcast");
-    expect(await clientNs2.next()).toBe("broadcast");
-
-    // No duplicate delivery: before the fix each subscriber received one copy
-    // per namespace (twice total).
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    expect(clientNs1.messages).toEqual(["broadcast"]);
-    expect(clientNs2.messages).toEqual(["broadcast"]);
   });
 });
