@@ -132,6 +132,15 @@ describe("sync (broadcastChannel + uWebSockets native pub/sub)", () => {
     await clientB.send("back over uws");
     expect(await clientA.next()).toBe("back over uws");
     expect(clientA.messages).not.toContain("hello over uws");
+
+    // No duplicate delivery on the receiving instance. clientB is the only
+    // subscriber on instance B, so the inbound relay reaches it via the explicit
+    // peer.send() and the native `ws.publish` must NOT *also* echo to it — that
+    // would deliver the message twice. Settle, then assert exactly one copy.
+    // (Guards against a uWS version where `ws.publish` echoes the sender socket.)
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(clientB.messages.filter((m) => m === "hello over uws")).toHaveLength(1);
+    expect(clientA.messages.filter((m) => m === "back over uws")).toHaveLength(1);
   });
 });
 

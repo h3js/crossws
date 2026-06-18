@@ -47,7 +47,9 @@ export interface PostgresClientLike {
  * Pass a single, dedicated [`Client`](https://node-postgres.com/apis/client), not
  * a [`Pool`](https://node-postgres.com/apis/pool): pool `query()` runs `LISTEN`
  * on an arbitrary backend that is then returned to the pool, so notifications
- * would never reach a stable listener. A `Pool` is detected and rejected.
+ * would never reach a stable listener. A `Pool` is detected and rejected. For the
+ * same reason, don't share one client across two `pgsql()` drivers on the same
+ * channel — `close()` issues a single `UNLISTEN` that would silence the others.
  *
  * Works out of the box with both [node-postgres](https://github.com/brianc/node-postgres)
  * (`pg`) and [postgres.js](https://github.com/porsager/postgres): the flavor is

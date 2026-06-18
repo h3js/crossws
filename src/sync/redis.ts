@@ -51,6 +51,11 @@ export interface RedisClientLike {
  * A `channel` name is required: it scopes the cluster, and a shared default
  * would risk silently bridging unrelated servers on the same Redis instance.
  *
+ * Reconnect note: ioredis auto-resubscribes its channels after a dropped
+ * connection; node-redis does not restore subscriptions the same way, so a
+ * node-redis-backed instance may stop receiving relayed messages after a
+ * transient outage. Prefer ioredis where connection resilience matters.
+ *
  * @example
  * ```js
  * // ioredis
