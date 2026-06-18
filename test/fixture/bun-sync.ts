@@ -6,7 +6,7 @@
 
 import bunAdapter from "../../src/adapters/bun";
 import { defineHooks } from "../../src/index";
-import { broadcastChannelSync } from "../../src/sync";
+import { broadcastChannel } from "../../src/sync";
 
 const hooks = defineHooks({
   open(peer) {
@@ -17,7 +17,7 @@ const hooks = defineHooks({
   },
 });
 
-function createInstance(sync: ReturnType<typeof broadcastChannelSync>) {
+function createInstance(sync: ReturnType<typeof broadcastChannel>) {
   const ws = bunAdapter({ hooks, sync });
   const server = Bun.serve({
     port: 0, // random
@@ -60,7 +60,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   ]);
 }
 
-const sync = broadcastChannelSync({ name: "crossws:bun:sync" });
+const sync = broadcastChannel({ channel: "crossws:bun:sync" });
 const a = createInstance(sync);
 const b = createInstance(sync);
 

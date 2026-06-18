@@ -5,7 +5,7 @@ import { App, us_listen_socket_close, type us_listen_socket } from "uWebSockets.
 import nodeAdapter from "../../src/adapters/node";
 import uwsAdapter from "../../src/adapters/uws";
 import { defineHooks } from "../../src/index";
-import { broadcastChannelSync } from "../../src/sync";
+import { broadcastChannel } from "../../src/sync";
 import type { SyncAdapter } from "../../src/sync";
 import { wsConnect } from "../_utils";
 
@@ -41,7 +41,7 @@ describe("sync (broadcastChannel)", () => {
 
   beforeAll(async () => {
     // Both instances share a BroadcastChannel name → they form one cluster.
-    const sync = broadcastChannelSync({ name: "crossws:test:sync" });
+    const sync = broadcastChannel({ channel: "crossws:test:sync" });
     [a, b] = await Promise.all([createInstance(sync), createInstance(sync)]);
   });
 
@@ -97,7 +97,7 @@ async function createUwsInstance(sync?: SyncAdapter) {
   const port = await getRandomPort("localhost");
   const token = await new Promise<us_listen_socket>((resolve, reject) => {
     app.listen(port, (listenSocket) => {
-      listenSocket ? resolve(listenSocket) : reject(new Error("uWS listen failed"));
+      return listenSocket ? resolve(listenSocket) : reject(new Error("uWS listen failed"));
     });
   });
   await waitForPort(port);
@@ -113,7 +113,7 @@ describe("sync (broadcastChannel + uWebSockets native pub/sub)", () => {
   let b: Awaited<ReturnType<typeof createUwsInstance>>;
 
   beforeAll(async () => {
-    const sync = broadcastChannelSync({ name: "crossws:test:uws-sync" });
+    const sync = broadcastChannel({ channel: "crossws:test:uws-sync" });
     [a, b] = await Promise.all([createUwsInstance(sync), createUwsInstance(sync)]);
   });
 
@@ -182,7 +182,7 @@ describe("native pub/sub global publish (uWebSockets)", () => {
     const port = await getRandomPort("localhost");
     const token = await new Promise<us_listen_socket>((resolve, reject) => {
       app.listen(port, (listenSocket) => {
-        listenSocket ? resolve(listenSocket) : reject(new Error("uWS listen failed"));
+        return listenSocket ? resolve(listenSocket) : reject(new Error("uWS listen failed"));
       });
     });
     await waitForPort(port);
