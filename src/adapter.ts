@@ -6,11 +6,19 @@ import { serializeMessage } from "./utils.ts";
 export function adapterUtils(
   globalPeers: Map<string, Set<Peer>>,
   options?: AdapterOptions,
+  caps?: { nativePubSub?: boolean },
 ): AdapterInstance {
   // Relay-free local fan-out: deliver `message` to every local subscriber of
   // `topic`. Reused both for the public `publish` and for delivering messages
   // relayed from other instances (the latter must NOT echo back to the sync
   // backplane, hence `_publish` rather than the relay-aware `publish`).
+  //
+  // Native pub/sub adapters (bun, uWebSockets) broadcast a topic app-wide with
+  // a single `ws.publish(topic)` that ignores namespaces. For a global publish
+  // (no `namespace`) we therefore stop after the first namespace with a match:
+  // a second `_publish` would re-broadcast app-wide and deliver every message
+  // again. Loop-based adapters fan out within a single namespace Set, so they
+  // must visit every namespace.
   const localPublish = (
     topic: string,
     message: any,
@@ -29,6 +37,10 @@ export function adapterUtils(
       if (firstPeerWithTopic) {
         firstPeerWithTopic.send(message, pubOptions);
         firstPeerWithTopic._publish(topic, message, pubOptions);
+        if (caps?.nativePubSub && !pubOptions?.namespace) {
+          // `_publish` already reached every subscriber app-wide.
+          break;
+        }
       }
     }
   };
@@ -38,8 +50,15 @@ export function adapterUtils(
     sync = options.sync({ id: crypto.randomUUID() });
     Promise.resolve(
       sync.subscribe((msg) => {
-        // `""` namespace means "all namespaces" (server-side global publish).
-        localPublish(msg.topic, msg.data, { namespace: msg.namespace || undefined });
+        // A failing subscriber send must not break the relay nor bubble into
+        // the driver's transport callback (e.g. a Redis "message" handler);
+        // isolate per-delivery errors here.
+        try {
+          // `""` namespace means "all namespaces" (server-side global publish).
+          localPublish(msg.topic, msg.data, { namespace: msg.namespace || undefined });
+        } catch (error) {
+          console.error("[crossws] sync delivery failed:", error);
+        }
       }),
     ).catch((error) => {
       console.error("[crossws] failed to subscribe to sync backplane:", error);

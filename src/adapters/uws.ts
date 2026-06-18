@@ -42,7 +42,7 @@ export interface UWSOptions extends AdapterOptions {
 const uwsAdapter: Adapter<UWSAdapter, UWSOptions> = (options = {}) => {
   const hooks = new AdapterHookable(options);
   const globalPeers = new Map<string, Set<UWSPeer>>();
-  const baseUtils = adapterUtils(globalPeers, options);
+  const baseUtils = adapterUtils(globalPeers, options, { nativePubSub: true });
   return {
     ...baseUtils,
     websocket: {

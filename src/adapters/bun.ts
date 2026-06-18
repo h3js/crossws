@@ -35,7 +35,7 @@ const bunAdapter: Adapter<BunAdapter, BunOptions> = (options = {}) => {
 
   const hooks = new AdapterHookable(options);
   const globalPeers = new Map<string, Set<BunPeer>>();
-  const baseUtils = adapterUtils(globalPeers, options);
+  const baseUtils = adapterUtils(globalPeers, options, { nativePubSub: true });
   return {
     ...baseUtils,
     async handleUpgrade(request, server) {

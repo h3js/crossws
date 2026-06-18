@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { createServer, Server } from "node:http";
 import { getRandomPort, waitForPort } from "get-port-please";
-import { App, us_listen_socket_close } from "uWebSockets.js";
+import { App, us_listen_socket_close, type us_listen_socket } from "uWebSockets.js";
 import nodeAdapter from "../../src/adapters/node";
 import uwsAdapter from "../../src/adapters/uws";
 import { defineHooks } from "../../src/index";
@@ -95,7 +95,7 @@ async function createUwsInstance(sync?: SyncAdapter) {
   const ws = uwsAdapter({ hooks, sync });
   const app = App().ws("/*", ws.websocket);
   const port = await getRandomPort("localhost");
-  const token = await new Promise<unknown>((resolve, reject) => {
+  const token = await new Promise<us_listen_socket>((resolve, reject) => {
     app.listen(port, (listenSocket) => {
       listenSocket ? resolve(listenSocket) : reject(new Error("uWS listen failed"));
     });
@@ -161,5 +161,53 @@ describe("sync (no backplane)", () => {
     await new Promise((resolve) => setTimeout(resolve, 100));
     expect(clientB.messages).not.toContain("local only");
     expect(a.ws.sync).toBeUndefined();
+  });
+});
+
+// Regression: a global `adapter.publish(topic, data)` (no namespace) on a
+// native pub/sub adapter must reach each subscriber exactly once, even when
+// subscribers live in different namespaces. Native adapters broadcast a topic
+// app-wide via a single `ws.publish`, so iterating every namespace Set (as the
+// loop-based adapters require) used to deliver the message once per namespace.
+describe("native pub/sub global publish (uWebSockets)", () => {
+  let server: {
+    ws: ReturnType<typeof uwsAdapter>;
+    port: number;
+    close: () => void;
+  };
+
+  beforeAll(async () => {
+    const ws = uwsAdapter({ hooks });
+    const app = App().ws("/*", ws.websocket);
+    const port = await getRandomPort("localhost");
+    const token = await new Promise<us_listen_socket>((resolve, reject) => {
+      app.listen(port, (listenSocket) => {
+        listenSocket ? resolve(listenSocket) : reject(new Error("uWS listen failed"));
+      });
+    });
+    await waitForPort(port);
+    server = { ws, port, close: () => us_listen_socket_close(token) };
+  });
+
+  afterAll(() => server.close());
+
+  test("global publish reaches each namespace's subscriber exactly once", async () => {
+    // Two clients in distinct namespaces (derived from the URL pathname), both
+    // subscribed to "chat" via the `open` hook.
+    const clientNs1 = await wsConnect(`ws://localhost:${server.port}/ns1`);
+    const clientNs2 = await wsConnect(`ws://localhost:${server.port}/ns2`);
+    // Let both `open` hooks run so each peer is subscribed before we publish.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    server.ws.publish("chat", "broadcast");
+
+    expect(await clientNs1.next()).toBe("broadcast");
+    expect(await clientNs2.next()).toBe("broadcast");
+
+    // No duplicate delivery: before the fix each subscriber received one copy
+    // per namespace (twice total).
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(clientNs1.messages).toEqual(["broadcast"]);
+    expect(clientNs2.messages).toEqual(["broadcast"]);
   });
 });
