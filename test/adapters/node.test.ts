@@ -87,8 +87,8 @@ describe("node (publish object frame type)", () => {
     await waitForPort(port);
   });
 
-  afterAll(async () => {
-    await ws.close();
+  afterAll(() => {
+    ws.closeAll();
     server.close();
   });
 
