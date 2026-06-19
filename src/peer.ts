@@ -78,6 +78,18 @@ export abstract class Peer<Internal extends AdapterInternal = AdapterInternal> {
     return this._topics;
   }
 
+  /**
+   * Number of bytes queued for transmission but not yet flushed to the client.
+   *
+   * Use this to apply backpressure: pause sending while it grows past a high
+   * watermark and resume once it drops (or on the `drain` hook). Returns `0` on
+   * adapters that do not expose a buffer signal. Refer to the
+   * [compatibility table](https://crossws.h3.dev/guide/peer#compatibility).
+   */
+  get bufferedAmount(): number {
+    return (this._internal.ws as Partial<web.WebSocket>)?.bufferedAmount ?? 0;
+  }
+
   abstract close(code?: number, reason?: string): void;
 
   /** Abruptly close the connection */

@@ -119,6 +119,15 @@ export function wsTests(getURL: () => string, opts: WSTestOpts): void {
     }
   });
 
+  test("peer.bufferedAmount", async () => {
+    const ws = await wsConnect(getURL(), { skip: 1 });
+    await ws.send("debug");
+    const { bufferedAmount } = await ws.next();
+    // Adapters without a buffer signal report 0; capable ones report >= 0.
+    expect(typeof bufferedAmount).toBe("number");
+    expect(bufferedAmount).toBeGreaterThanOrEqual(0);
+  });
+
   test("peer.websocket", async () => {
     const ws = await wsConnect(getURL() + "?foo=bar", {
       skip: 1,

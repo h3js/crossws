@@ -61,6 +61,11 @@ const uwsAdapter: Adapter<UWSAdapter, UWSOptions> = (options = {}) => {
         const peer = getPeer(ws, peers);
         hooks.callHook("message", peer, new Message(message, peer));
       },
+      drain(ws) {
+        const peers = getPeers(globalPeers, ws.getUserData().namespace);
+        const peer = getPeer(ws, peers);
+        hooks.callHook("drain", peer);
+      },
       open(ws) {
         const peers = getPeers(globalPeers, ws.getUserData().namespace);
         const peer = getPeer(ws, peers);

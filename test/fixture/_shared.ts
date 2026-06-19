@@ -28,6 +28,7 @@ export function createDemo<T extends Adapter<any, any>>(
           peer.send({
             id: peer.id,
             remoteAddress: peer.remoteAddress,
+            bufferedAmount: peer.bufferedAmount,
             context: peer.context,
             request: {
               url: peer.request?.url,

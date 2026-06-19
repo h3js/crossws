@@ -88,6 +88,13 @@ const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
         reason: reason?.toString(),
       });
     });
+    // `ws` has no drain event of its own; the underlying TCP socket emits
+    // `drain` only after a write was backpressured, which is exactly the
+    // signal we want for `peer.bufferedAmount`-based throttling.
+    const socket = (ws as WebSocketT & { _socket?: Duplex })._socket;
+    socket?.on("drain", () => {
+      hooks.callHook("drain", peer);
+    });
   });
 
   wss.on("headers", (outgoingHeaders, req) => {
@@ -166,7 +173,7 @@ class NodePeer extends Peer<{
       binary: isBinary,
       ...options,
     });
-    return 0;
+    return this._internal.ws.bufferedAmount;
   }
 
   publish(topic: string, data: unknown, options?: { compress?: boolean }): void {

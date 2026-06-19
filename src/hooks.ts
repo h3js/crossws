@@ -146,6 +146,15 @@ export interface Hooks {
   /** A socket is closed */
   close: (peer: Peer, details: { code?: number; reason?: string }) => MaybePromise<void>;
 
+  /**
+   * The send buffer has drained after backpressure, so it is safe to resume
+   * sending. Pair with {@link Peer.bufferedAmount} to throttle senders.
+   *
+   * **Note:** Only emitted by adapters that expose a drain signal. Refer to the
+   * [compatibility table](https://crossws.h3.dev/guide/peer#compatibility).
+   */
+  drain: (peer: Peer) => MaybePromise<void>;
+
   /** An error occurs */
   error: (peer: Peer, error: WSError) => MaybePromise<void>;
 }
