@@ -235,7 +235,11 @@ class UWSReqProxy extends StubRequest {
 class UwsWebSocketProxy implements Partial<WebSocket> {
   readyState?: number = 1 /* OPEN */;
 
-  constructor(private _uws: uws.WebSocket<UserData>) {}
+  private _uws: uws.WebSocket<UserData>;
+
+  constructor(_uws: uws.WebSocket<UserData>) {
+    this._uws = _uws;
+  }
 
   get bufferedAmount(): number {
     return this._uws?.getBufferedAmount();
