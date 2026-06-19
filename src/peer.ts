@@ -12,8 +12,7 @@ export interface WaitForDrainOptions {
   threshold?: number;
 
   /**
-   * Polling interval (in milliseconds) used as a fallback on adapters without a
-   * native `drain` signal. Capable adapters resolve on the drain event instead.
+   * Polling interval (in milliseconds) used to re-check {@link Peer.bufferedAmount}.
    *
    * @default 100
    */
@@ -40,7 +39,6 @@ export abstract class Peer<Internal extends AdapterInternal = AdapterInternal> {
   protected _id?: string;
 
   #ws?: Partial<web.WebSocket>;
-  #drainWaiters?: Set<() => void>;
 
   constructor(internal: Internal) {
     this._topics = new Set();
@@ -118,9 +116,10 @@ export abstract class Peer<Internal extends AdapterInternal = AdapterInternal> {
    * Wait until the send buffer drains to `threshold` bytes (default `0`).
    *
    * Resolves immediately when there is no backpressure (or on adapters that do
-   * not expose {@link Peer.bufferedAmount}). On adapters with a `drain` signal
-   * it resolves as soon as the buffer drains; otherwise it polls every
-   * `pollInterval` milliseconds.
+   * not expose {@link Peer.bufferedAmount}). Otherwise it polls every
+   * `pollInterval` milliseconds until the buffer drains, also resolving early if
+   * the connection is no longer open so a send loop never hangs on a dropped
+   * client.
    *
    * ```ts
    * for (const chunk of stream) {
@@ -140,10 +139,11 @@ export abstract class Peer<Internal extends AdapterInternal = AdapterInternal> {
     if (signal?.aborted) {
       return Promise.reject(signal.reason);
     }
-    const waiters = (this.#drainWaiters ??= new Set<() => void>());
     return new Promise<void>((resolve, reject) => {
       const check = () => {
-        if (this.bufferedAmount <= threshold) {
+        // Resolve once drained, or if the socket left the OPEN (1) state — a
+        // closed peer never drains, so this prevents a permanent hang + leak.
+        if (this.bufferedAmount <= threshold || (this.websocket.readyState ?? 1) > 1) {
           cleanup();
           resolve();
         }
@@ -153,29 +153,14 @@ export abstract class Peer<Internal extends AdapterInternal = AdapterInternal> {
         reject(signal!.reason);
       };
       const timer = setInterval(check, opts.pollInterval ?? 100);
+      // Don't keep the event loop alive just for a pending drain check.
+      timer.unref?.();
       const cleanup = () => {
         clearInterval(timer);
-        waiters.delete(check);
         signal?.removeEventListener("abort", onAbort);
       };
-      waiters.add(check);
       signal?.addEventListener("abort", onAbort, { once: true });
     });
-  }
-
-  /**
-   * Notify pending {@link Peer.waitForDrain} callers that the send buffer has
-   * drained. Called by adapters that expose a native `drain` signal.
-   *
-   * @internal
-   */
-  _emitDrain(): void {
-    if (this.#drainWaiters?.size) {
-      // `check()` only removes its own entry, so iterating live is safe.
-      for (const check of this.#drainWaiters) {
-        check();
-      }
-    }
   }
 
   abstract close(code?: number, reason?: string): void;

@@ -76,7 +76,6 @@ const bunAdapter: Adapter<BunAdapter, BunOptions> = (options = {}) => {
       drain: (ws) => {
         const peers = getPeers(globalPeers, ws.data.namespace);
         const peer = getPeer(ws, peers);
-        peer._emitDrain();
         hooks.callHook("drain", peer);
       },
     },
