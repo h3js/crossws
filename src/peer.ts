@@ -3,6 +3,29 @@ import { kNodeInspect } from "./utils.ts";
 
 export interface PeerContext extends Record<string, unknown> {}
 
+export interface WaitForDrainOptions {
+  /**
+   * Resolve once {@link Peer.bufferedAmount} drops to or below this many bytes.
+   *
+   * @default 0
+   */
+  threshold?: number;
+
+  /**
+   * Polling interval (in milliseconds) used as a fallback on adapters without a
+   * native `drain` signal. Capable adapters resolve on the drain event instead.
+   *
+   * @default 100
+   */
+  pollInterval?: number;
+
+  /**
+   * Abort the wait (e.g. `AbortSignal.timeout(ms)`). The returned promise
+   * rejects with the signal's `reason`.
+   */
+  signal?: AbortSignal;
+}
+
 export interface AdapterInternal {
   ws: unknown;
   request: Request;
@@ -17,6 +40,7 @@ export abstract class Peer<Internal extends AdapterInternal = AdapterInternal> {
   protected _id?: string;
 
   #ws?: Partial<web.WebSocket>;
+  #drainWaiters?: Set<() => void>;
 
   constructor(internal: Internal) {
     this._topics = new Set();
@@ -88,6 +112,70 @@ export abstract class Peer<Internal extends AdapterInternal = AdapterInternal> {
    */
   get bufferedAmount(): number {
     return (this._internal.ws as Partial<web.WebSocket>)?.bufferedAmount ?? 0;
+  }
+
+  /**
+   * Wait until the send buffer drains to `threshold` bytes (default `0`).
+   *
+   * Resolves immediately when there is no backpressure (or on adapters that do
+   * not expose {@link Peer.bufferedAmount}). On adapters with a `drain` signal
+   * it resolves as soon as the buffer drains; otherwise it polls every
+   * `pollInterval` milliseconds.
+   *
+   * ```ts
+   * for (const chunk of stream) {
+   *   peer.send(chunk);
+   *   if (peer.bufferedAmount > 1024 * 1024) {
+   *     await peer.waitForDrain({ threshold: 256 * 1024 });
+   *   }
+   * }
+   * ```
+   */
+  waitForDrain(opts: WaitForDrainOptions = {}): Promise<void> {
+    const threshold = opts.threshold ?? 0;
+    if (this.bufferedAmount <= threshold) {
+      return Promise.resolve();
+    }
+    const signal = opts.signal;
+    if (signal?.aborted) {
+      return Promise.reject(signal.reason);
+    }
+    const waiters = (this.#drainWaiters ??= new Set<() => void>());
+    return new Promise<void>((resolve, reject) => {
+      const check = () => {
+        if (this.bufferedAmount <= threshold) {
+          cleanup();
+          resolve();
+        }
+      };
+      const onAbort = () => {
+        cleanup();
+        reject(signal!.reason);
+      };
+      const timer = setInterval(check, opts.pollInterval ?? 100);
+      const cleanup = () => {
+        clearInterval(timer);
+        waiters.delete(check);
+        signal?.removeEventListener("abort", onAbort);
+      };
+      waiters.add(check);
+      signal?.addEventListener("abort", onAbort, { once: true });
+    });
+  }
+
+  /**
+   * Notify pending {@link Peer.waitForDrain} callers that the send buffer has
+   * drained. Called by adapters that expose a native `drain` signal.
+   *
+   * @internal
+   */
+  _emitDrain(): void {
+    if (this.#drainWaiters?.size) {
+      // `check()` only removes its own entry, so iterating live is safe.
+      for (const check of this.#drainWaiters) {
+        check();
+      }
+    }
   }
 
   abstract close(code?: number, reason?: string): void;

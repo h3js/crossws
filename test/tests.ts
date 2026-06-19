@@ -128,6 +128,12 @@ export function wsTests(getURL: () => string, opts: WSTestOpts): void {
     expect(bufferedAmount).toBeGreaterThanOrEqual(0);
   });
 
+  test("peer.waitForDrain", async () => {
+    const ws = await wsConnect(getURL(), { skip: 1 });
+    await ws.send("waitForDrain");
+    expect(await ws.next()).toBe("drained");
+  });
+
   test("peer.websocket", async () => {
     const ws = await wsConnect(getURL() + "?foo=bar", {
       skip: 1,

@@ -45,6 +45,10 @@ export function createDemo<T extends Adapter<any, any>>(
           });
           break;
         }
+        case "waitForDrain": {
+          peer.waitForDrain({ pollInterval: 10 }).then(() => peer.send("drained"));
+          break;
+        }
         case "peers": {
           peer.send({
             peers: [...peer.peers].map((p) => p.id),

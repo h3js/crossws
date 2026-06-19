@@ -93,6 +93,7 @@ const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
     // signal we want for `peer.bufferedAmount`-based throttling.
     const socket = (ws as WebSocketT & { _socket?: Duplex })._socket;
     socket?.on("drain", () => {
+      peer._emitDrain();
       hooks.callHook("drain", peer);
     });
   });
