@@ -98,7 +98,6 @@ const cloudflareAdapter: Adapter<CloudflareDurableAdapter, CloudflareOptions> = 
         cfCtx,
         context,
         namespace,
-        sync: baseUtils.sync,
       });
       peers.add(peer);
       server.accept();
@@ -306,20 +305,19 @@ class CloudflareFallbackPeer extends Peer<{
   cfCtx: CF.ExecutionContext;
   context: PeerContext;
   namespace: string;
-  sync?: SyncDriver;
 }> {
   send(data: unknown) {
     this._internal.wsServer.send(toBufferLike(data));
     return 0;
   }
 
-  _publish(topic: string, data: unknown): void {
-    const dataBuff = toBufferLike(data);
-    for (const peer of this._internal.peers) {
-      if (peer !== this && peer._topics.has(topic)) {
-        peer._internal.wsServer.send(dataBuff);
-      }
-    }
+  _publish(_topic: string, _message: any): void {
+    // Fallback mode can't fan out: in the Workers model each WebSocket lives in
+    // its own `fetch` invocation, and sending to a socket owned by another
+    // request context throws "Network connection lost". Cross-connection pub/sub
+    // (and therefore a sync backplane) requires Durable Objects, whose context
+    // owns every (hibernatable) socket via `ctx.getWebSockets()`.
+    console.warn("[crossws] [cloudflare] pub/sub support requires Durable Objects.");
   }
 
   close(code?: number, reason?: string) {

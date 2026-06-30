@@ -93,11 +93,10 @@ See [`test/fixture/cloudflare-durable.ts`](https://github.com/h3js/crossws/blob/
 
 ### Sync across instances
 
-The [sync backplane](/guide/sync) relays [pub/sub](/guide/pubsub) between crossws instances, but on Cloudflare the model is different from a Node-style cluster — so reach for it only when you actually need it:
+The [sync backplane](/guide/sync) relays [pub/sub](/guide/pubsub) between crossws instances, but on Cloudflare the model is different from a Node-style cluster — so reach for it only when you actually need it. A backplane on Cloudflare requires **Durable Objects**: only a Durable Object's context owns its (hibernatable) sockets via `ctx.getWebSockets()` and can fan a message out to them. In **fallback mode** (no Durable Object binding) each connection is a separate Worker invocation that can't send to another connection's socket, so pub/sub — and a backplane — are not supported there.
 
 - **Single Durable Object (the default).** With one instance (`"crossws"`), every connection across your app already lands on that same Durable Object, so `peer.publish()` is cluster-global out of the box. **No backplane needed.**
 - **Sharded Durable Objects.** If you fan connections across **multiple** instances (e.g. one per room via `resolveDurableStub`), a publish in one instance won't reach the others — a `sync` backplane bridges them.
-- **Fallback mode (no Durable Object).** Without a Durable Object binding, pub/sub stays local to each Worker isolate; a `sync` backplane relays between isolates.
 
 ```js
 import crossws from "crossws/adapters/cloudflare";
