@@ -21,9 +21,12 @@ export interface WebSocketProxyOptions {
    * based on the incoming {@link Peer}. The resolver may be **async** (return a
    * promise) — useful when the upstream address isn't known yet at connect time
    * (e.g. a worker that's still booting or being hot-reloaded). Client frames
-   * sent in the meantime are buffered (bounded by {@link maxBufferSize}) and the
-   * {@link connectTimeout} also covers the resolution, so a resolver that never
-   * settles closes the peer with `1011` rather than hanging.
+   * sent in the meantime are buffered (bounded by {@link maxBufferSize}) and a
+   * non-zero {@link connectTimeout} also covers the resolution, so a resolver
+   * that never settles closes the peer with `1011` rather than hanging. With
+   * `connectTimeout: 0` (timeout disabled) a never-settling resolver leaves the
+   * peer open until {@link maxBufferSize} is hit (`1009`), so pair an unbounded
+   * timeout with your own resolver deadline.
    */
   target: string | URL | ((peer: Peer) => string | URL | Promise<string | URL>);
 
@@ -325,14 +328,23 @@ function _dialUpstream(
     if (upstreams.get(peer.id) !== state) return;
     _clearTimeout(state);
     state.open = true;
-    for (const data of state.buffer) {
-      ws.send(data);
+    try {
+      for (const data of state.buffer) {
+        // upstream may have raced into CLOSING/CLOSED right after `open`
+        ws.send(data);
+      }
+    } catch {
+      // ignore — remaining frames are dropped along with the buffer below
+    } finally {
+      state.buffer.length = 0;
+      state.bufferSize = 0;
     }
-    state.buffer.length = 0;
-    state.bufferSize = 0;
   });
 
   ws.addEventListener("message", (event) => {
+    // An in-flight upstream message can still fire after the proxy tore down
+    // this peer's state (timeout or buffer-limit close); don't leak it through.
+    if (upstreams.get(peer.id) !== state) return;
     _safeSend(peer, event.data);
   });
 
@@ -375,11 +387,21 @@ function _clearTimeout(state: UpstreamState): void {
 
 function _resolveTarget(target: WebSocketProxyOptions["target"], peer: Peer): URL | Promise<URL> {
   const raw = typeof target === "function" ? target(peer) : target;
-  // An async resolver returns a promise — await it, then coerce to a URL.
-  if (raw instanceof Promise) {
-    return raw.then((value) => (value instanceof URL ? value : new URL(value)));
+  // An async resolver returns a thenable — await it, then coerce to a URL.
+  // Detect it structurally (not via `instanceof Promise`) so non-native
+  // promises (Bluebird, cross-realm, custom thenables) are awaited too.
+  if (_isThenable(raw)) {
+    return Promise.resolve(raw).then((value) => (value instanceof URL ? value : new URL(value)));
   }
   return raw instanceof URL ? raw : new URL(raw);
+}
+
+function _isThenable(value: unknown): value is PromiseLike<unknown> {
+  return (
+    value != null &&
+    (typeof value === "object" || typeof value === "function") &&
+    typeof (value as { then?: unknown }).then === "function"
+  );
 }
 
 function _resolveWsOptions(

@@ -219,6 +219,36 @@ describe("createWebSocketProxy", () => {
     }
   });
 
+  test("accepts a non-native thenable target resolver", async () => {
+    // Resolvers backed by non-native promises (Bluebird, cross-realm, custom
+    // thenables from RPC clients) must be awaited like any other promise — not
+    // stringified into `new URL()`.
+    const thenableProxy = nodeAdapter({
+      hooks: createWebSocketProxy({
+        target: () =>
+          ({
+            // oxlint-disable-next-line unicorn/no-thenable -- intentionally a non-native thenable
+            then(onFulfilled: (value: string) => void) {
+              setTimeout(() => onFulfilled(upstreamURL), 50);
+            },
+          }) as unknown as Promise<string>,
+      }),
+    });
+    const server = createServer((_req, res) => res.end("ok"));
+    server.on("upgrade", thenableProxy.handleUpgrade);
+    const port = await getRandomPort("localhost");
+    await new Promise<void>((resolve) => server.listen(port, resolve));
+    await waitForPort(port);
+    try {
+      const ws = await wsConnect(`ws://localhost:${port}/`, { skip: 1 });
+      await ws.send("early");
+      expect(await ws.next()).toBe("echo:early");
+    } finally {
+      server.closeAllConnections?.();
+      server.close();
+    }
+  });
+
   test("closes peer with 1011 when an async target resolver rejects", async () => {
     const rejectProxy = nodeAdapter({
       hooks: createWebSocketProxy({
