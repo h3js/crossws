@@ -63,6 +63,11 @@ const uwsAdapter: Adapter<UWSAdapter, UWSOptions> = (options = {}) => {
         const peer = getPeer(ws, peers, baseUtils.sync);
         hooks.callHook("message", peer, new Message(message, peer));
       },
+      drain(ws) {
+        const peers = getPeers(globalPeers, ws.getUserData().namespace);
+        const peer = getPeer(ws, peers);
+        hooks.callHook("drain", peer);
+      },
       open(ws) {
         const peers = getPeers(globalPeers, ws.getUserData().namespace);
         const peer = getPeer(ws, peers, baseUtils.sync);
@@ -239,7 +244,11 @@ class UWSReqProxy extends StubRequest {
 class UwsWebSocketProxy implements Partial<WebSocket> {
   readyState?: number = 1 /* OPEN */;
 
-  constructor(private _uws: uws.WebSocket<UserData>) {}
+  private _uws: uws.WebSocket<UserData>;
+
+  constructor(_uws: uws.WebSocket<UserData>) {
+    this._uws = _uws;
+  }
 
   get bufferedAmount(): number {
     return this._uws?.getBufferedAmount();

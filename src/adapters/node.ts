@@ -84,8 +84,17 @@ const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
       peers.delete(peer);
       hooks.callHook("error", peer, new WSError(error));
     });
+    // `ws` has no drain event of its own; the underlying TCP socket emits
+    // `drain` after a backpressured write flushes. Note this tracks the OS
+    // socket buffer, which is an approximation of `peer.bufferedAmount` (the
+    // latter also includes ws's internal sender queue) — treat it as a resume
+    // nudge, not an exact "bufferedAmount reached 0" signal.
+    const socket = (ws as WebSocketT & { _socket?: Duplex })._socket;
+    const onDrain = () => hooks.callHook("drain", peer);
+    socket?.on("drain", onDrain);
     ws.on("close", (code: number, reason: Buffer) => {
       peers.delete(peer);
+      socket?.off("drain", onDrain);
       hooks.callHook("close", peer, {
         code,
         reason: reason?.toString(),
@@ -170,12 +179,15 @@ class NodePeer extends Peer<{
       binary: isBinary,
       ...options,
     });
-    return 0;
+    return this._internal.ws.bufferedAmount;
   }
 
   _publish(topic: string, data: unknown, options?: { compress?: boolean }): void {
     const dataBuff = toBufferLike(data);
-    const isBinary = typeof data !== "string";
+    // Derive `isBinary` from the serialized buffer, not the raw input: a plain
+    // object/number is normalized to a JSON/text string by `toBufferLike`, so it
+    // must be sent as text. (Matches the uWS adapter's handling.)
+    const isBinary = typeof dataBuff !== "string";
     const sendOptions = {
       compress: options?.compress,
       binary: isBinary,

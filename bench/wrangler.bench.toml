@@ -1,0 +1,15 @@
+# Wrangler config for the crossws Cloudflare bench server.
+# https://developers.cloudflare.com/workers/wrangler/configuration/
+name = "crossws-bench"
+compatibility_date = "2024-04-03"
+workers_dev = false
+
+main = "server.cloudflare.ts"
+
+[[durable_objects.bindings]]
+name = "$DurableObject"
+class_name = "$DurableObject"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["$DurableObject"]

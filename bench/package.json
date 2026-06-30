@@ -1,0 +1,19 @@
+{
+  "name": "crossws-bench",
+  "private": true,
+  "description": "Cross-adapter WebSocket chat-room throughput benchmark for crossws",
+  "type": "module",
+  "scripts": {
+    "bench": "node ./run.mjs",
+    "client": "node ./client.mjs",
+    "server:node-ws": "node ./server.node-ws.ts",
+    "server:node-ws-standalone": "node ./server.node-ws-standalone.ts",
+    "server:node-uws": "node ./server.node-uws.ts",
+    "server:uws-standalone": "node ./server.uws-standalone.ts",
+    "server:bun": "bun ./server.bun.ts",
+    "server:bun-native": "bun ./server.bun-native.ts",
+    "server:deno": "deno run -A ./server.deno.ts",
+    "server:deno-native": "deno run -A ./server.deno-native.ts",
+    "server:cloudflare": "wrangler dev -c wrangler.bench.toml"
+  }
+}

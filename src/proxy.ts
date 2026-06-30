@@ -18,9 +18,17 @@ export interface WebSocketProxyOptions {
    * Target WebSocket URL to proxy to (`ws://` or `wss://`).
    *
    * Can be a static string/URL or a function that resolves the target dynamically
-   * based on the incoming {@link Peer}.
+   * based on the incoming {@link Peer}. The resolver may be **async** (return a
+   * promise) — useful when the upstream address isn't known yet at connect time
+   * (e.g. a worker that's still booting or being hot-reloaded). Client frames
+   * sent in the meantime are buffered (bounded by {@link maxBufferSize}) and a
+   * non-zero {@link connectTimeout} also covers the resolution, so a resolver
+   * that never settles closes the peer with `1011` rather than hanging. With
+   * `connectTimeout: 0` (timeout disabled) a never-settling resolver leaves the
+   * peer open until {@link maxBufferSize} is hit (`1009`), so pair an unbounded
+   * timeout with your own resolver deadline.
    */
-  target: string | URL | ((peer: Peer) => string | URL);
+  target: string | URL | ((peer: Peer) => string | URL | Promise<string | URL>);
 
   /**
    * Subprotocol(s) to offer the upstream during the handshake.
@@ -154,34 +162,12 @@ export function createWebSocketProxy(
     },
 
     open(peer) {
-      let ws: WebSocket;
-      try {
-        const url = _resolveTarget(options.target, peer);
-        const protocols = _resolveProtocols(peer, options.forwardProtocol);
-        const wsOptions = _resolveWsOptions(options.headers, peer);
-        // The WHATWG WebSocket constructor only takes (url, protocols);
-        // additional arguments are ignored. Custom clients like `ws` and
-        // `undici` accept a third options object where `headers` is
-        // honored — so always pass it when the user configured headers.
-        ws = wsOptions
-          ? new (WebSocketCtor as unknown as new (
-              url: URL,
-              protocols: string[] | undefined,
-              opts: { headers: HeadersInit },
-            ) => WebSocket)(url, protocols, wsOptions)
-          : new WebSocketCtor(url, protocols);
-        ws.binaryType = "arraybuffer";
-      } catch {
-        // Bad target URL, disallowed scheme, invalid subprotocol token,
-        // or a throwing custom resolver — close the peer with a
-        // generic internal-error code rather than letting the exception
-        // escape the hook.
-        _safeClose(peer, 1011, "Upstream setup failed");
-        return;
-      }
-
+      // Register the state up front so client frames sent before the upstream
+      // is dialed are buffered (the `message` hook keys off `state`). The
+      // upstream socket is attached later by `_dialUpstream`, which may happen
+      // asynchronously when the target resolver returns a promise.
       const state: UpstreamState = {
-        ws,
+        ws: undefined,
         buffer: [],
         bufferSize: 0,
         open: false,
@@ -189,6 +175,8 @@ export function createWebSocketProxy(
       };
       upstreams.set(peer.id, state);
 
+      // The connect timeout starts now so it also bounds an async target
+      // resolver that never settles (not just the upstream handshake).
       const timeoutMs = options.connectTimeout ?? DEFAULT_CONNECT_TIMEOUT;
       if (timeoutMs > 0) {
         state.timeout = setTimeout(() => {
@@ -198,34 +186,28 @@ export function createWebSocketProxy(
         }, timeoutMs);
       }
 
-      ws.addEventListener("open", () => {
-        _clearTimeout(state);
-        state.open = true;
-        for (const data of state.buffer) {
-          ws.send(data);
-        }
-        state.buffer.length = 0;
-        state.bufferSize = 0;
-      });
-
-      ws.addEventListener("message", (event) => {
-        _safeSend(peer, event.data);
-      });
-
-      ws.addEventListener("close", (event) => {
-        // Ignore if the state was already cleaned up (e.g. proxy-initiated
-        // close or buffer limit); we only propagate unsolicited upstream
-        // closures to the client.
-        if (upstreams.get(peer.id) !== state) return;
+      let resolved: URL | Promise<URL>;
+      try {
+        resolved = _resolveTarget(options.target, peer);
+      } catch {
+        // A throwing synchronous resolver, or a non-URL string.
         _cleanupState(upstreams, peer.id, state);
-        _safeClose(peer, _remapIncomingCode(event.code), event.reason);
-      });
+        _safeClose(peer, 1011, "Upstream setup failed");
+        return;
+      }
 
-      ws.addEventListener("error", () => {
-        if (upstreams.get(peer.id) !== state) return;
-        _cleanupState(upstreams, peer.id, state);
-        _safeClose(peer, 1011, "Upstream error");
-      });
+      if (resolved instanceof Promise) {
+        resolved.then(
+          (url) => _dialUpstream(upstreams, peer, state, url, options, WebSocketCtor),
+          () => {
+            if (upstreams.get(peer.id) !== state) return;
+            _cleanupState(upstreams, peer.id, state);
+            _safeClose(peer, 1011, "Upstream setup failed");
+          },
+        );
+      } else {
+        _dialUpstream(upstreams, peer, state, resolved, options, WebSocketCtor);
+      }
     },
 
     message(peer, message) {
@@ -234,7 +216,8 @@ export function createWebSocketProxy(
       const raw = typeof message.rawData === "string" ? message.rawData : message.uint8Array();
       if (state.open) {
         try {
-          state.ws.send(raw);
+          // `open` is only set once `ws` is assigned, so it's non-null here.
+          state.ws?.send(raw);
         } catch {
           // upstream may have transitioned to CLOSING between the check and send
         }
@@ -266,7 +249,9 @@ export function createWebSocketProxy(
       _clearTimeout(state);
       upstreams.delete(peer.id);
       try {
-        state.ws.close(_normalizeOutgoingCode(details.code), _truncateReason(details.reason));
+        // `ws` is undefined if the peer closed while an async target was still
+        // resolving — nothing dialed yet, so there is nothing to close.
+        state.ws?.close(_normalizeOutgoingCode(details.code), _truncateReason(details.reason));
       } catch {
         // ignore invalid code/reason
       }
@@ -278,7 +263,7 @@ export function createWebSocketProxy(
       _clearTimeout(state);
       upstreams.delete(peer.id);
       try {
-        state.ws.close(1011, "Peer error");
+        state.ws?.close(1011, "Peer error");
       } catch {
         // ignore
       }
@@ -289,11 +274,94 @@ export function createWebSocketProxy(
 // --- internals ---
 
 interface UpstreamState {
-  ws: WebSocket;
+  // `undefined` until the upstream is dialed — the target may resolve async.
+  ws: WebSocket | undefined;
   buffer: Array<string | Uint8Array>;
   bufferSize: number;
   open: boolean;
   timeout: ReturnType<typeof setTimeout> | undefined;
+}
+
+// Dial the upstream once the target URL is known (synchronously, or after an
+// async resolver settles) and wire its lifecycle back to the peer.
+function _dialUpstream(
+  upstreams: Map<string, UpstreamState>,
+  peer: Peer,
+  state: UpstreamState,
+  url: URL,
+  options: WebSocketProxyOptions,
+  WebSocketCtor: typeof WebSocket,
+): void {
+  // The peer may have closed (or the timeout fired) while an async target was
+  // resolving — its state is gone from the map, so don't dial a stale upstream.
+  if (upstreams.get(peer.id) !== state) return;
+
+  let ws: WebSocket;
+  try {
+    const protocols = _resolveProtocols(peer, options.forwardProtocol);
+    const wsOptions = _resolveWsOptions(options.headers, peer);
+    // The WHATWG WebSocket constructor only takes (url, protocols);
+    // additional arguments are ignored. Custom clients like `ws` and
+    // `undici` accept a third options object where `headers` is
+    // honored — so always pass it when the user configured headers.
+    ws = wsOptions
+      ? new (WebSocketCtor as unknown as new (
+          url: URL,
+          protocols: string[] | undefined,
+          opts: { headers: HeadersInit },
+        ) => WebSocket)(url, protocols, wsOptions)
+      : new WebSocketCtor(url, protocols);
+    ws.binaryType = "arraybuffer";
+  } catch {
+    // Bad target URL, disallowed scheme, invalid subprotocol token,
+    // or a throwing custom resolver — close the peer with a
+    // generic internal-error code rather than letting the exception
+    // escape the hook.
+    _cleanupState(upstreams, peer.id, state);
+    _safeClose(peer, 1011, "Upstream setup failed");
+    return;
+  }
+  state.ws = ws;
+
+  ws.addEventListener("open", () => {
+    // The peer may have closed while the upstream was connecting.
+    if (upstreams.get(peer.id) !== state) return;
+    _clearTimeout(state);
+    state.open = true;
+    try {
+      for (const data of state.buffer) {
+        // upstream may have raced into CLOSING/CLOSED right after `open`
+        ws.send(data);
+      }
+    } catch {
+      // ignore — remaining frames are dropped along with the buffer below
+    } finally {
+      state.buffer.length = 0;
+      state.bufferSize = 0;
+    }
+  });
+
+  ws.addEventListener("message", (event) => {
+    // An in-flight upstream message can still fire after the proxy tore down
+    // this peer's state (timeout or buffer-limit close); don't leak it through.
+    if (upstreams.get(peer.id) !== state) return;
+    _safeSend(peer, event.data);
+  });
+
+  ws.addEventListener("close", (event) => {
+    // Ignore if the state was already cleaned up (e.g. proxy-initiated
+    // close or buffer limit); we only propagate unsolicited upstream
+    // closures to the client.
+    if (upstreams.get(peer.id) !== state) return;
+    _cleanupState(upstreams, peer.id, state);
+    _safeClose(peer, _remapIncomingCode(event.code), event.reason);
+  });
+
+  ws.addEventListener("error", () => {
+    if (upstreams.get(peer.id) !== state) return;
+    _cleanupState(upstreams, peer.id, state);
+    _safeClose(peer, 1011, "Upstream error");
+  });
 }
 
 function _cleanupState(
@@ -304,7 +372,7 @@ function _cleanupState(
   _clearTimeout(state);
   upstreams.delete(id);
   try {
-    state.ws.close();
+    state.ws?.close();
   } catch {
     // ignore
   }
@@ -317,9 +385,23 @@ function _clearTimeout(state: UpstreamState): void {
   }
 }
 
-function _resolveTarget(target: WebSocketProxyOptions["target"], peer: Peer): URL {
+function _resolveTarget(target: WebSocketProxyOptions["target"], peer: Peer): URL | Promise<URL> {
   const raw = typeof target === "function" ? target(peer) : target;
+  // An async resolver returns a thenable — await it, then coerce to a URL.
+  // Detect it structurally (not via `instanceof Promise`) so non-native
+  // promises (Bluebird, cross-realm, custom thenables) are awaited too.
+  if (_isThenable(raw)) {
+    return Promise.resolve(raw).then((value) => (value instanceof URL ? value : new URL(value)));
+  }
   return raw instanceof URL ? raw : new URL(raw);
+}
+
+function _isThenable(value: unknown): value is PromiseLike<unknown> {
+  return (
+    value != null &&
+    (typeof value === "object" || typeof value === "function") &&
+    typeof (value as { then?: unknown }).then === "function"
+  );
 }
 
 function _resolveWsOptions(

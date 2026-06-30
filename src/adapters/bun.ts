@@ -75,6 +75,11 @@ const bunAdapter: Adapter<BunAdapter, BunOptions> = (options = {}) => {
         peers.delete(peer);
         hooks.callHook("close", peer, { code, reason });
       },
+      drain: (ws) => {
+        const peers = getPeers(globalPeers, ws.data.namespace);
+        const peer = getPeer(ws, peers);
+        hooks.callHook("drain", peer);
+      },
     },
   };
 };
@@ -115,6 +120,10 @@ class BunPeer extends Peer<{
 
   override get context(): PeerContext {
     return this._internal.ws.data.context;
+  }
+
+  override get bufferedAmount(): number {
+    return this._internal.ws.getBufferedAmount();
   }
 
   send(data: unknown, options?: { compress?: boolean }): number {

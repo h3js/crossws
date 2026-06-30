@@ -28,6 +28,7 @@ export function createDemo<T extends Adapter<any, any>>(
           peer.send({
             id: peer.id,
             remoteAddress: peer.remoteAddress,
+            bufferedAmount: peer.bufferedAmount,
             context: peer.context,
             request: {
               url: peer.request?.url,
@@ -42,6 +43,10 @@ export function createDemo<T extends Adapter<any, any>>(
               bufferedAmount: peer.websocket.bufferedAmount,
             },
           });
+          break;
+        }
+        case "waitForDrain": {
+          peer.waitForDrain({ pollInterval: 10 }).then(() => peer.send("drained"));
           break;
         }
         case "peers": {
