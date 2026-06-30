@@ -89,7 +89,17 @@ export function adapterUtils(
     // (e.g. a dropped backplane connection) is caught here and reported.
     sync = {
       subscribe: (deliver) => driver.subscribe(deliver),
-      publish: (msg) => Promise.resolve(driver.publish(msg)).catch((e) => report("publish", e)),
+      // Guard a synchronous throw as well as an async rejection: this is called
+      // fire-and-forget from `Peer.publish` / `adapter.publish`, so a sync throw
+      // would otherwise escape into the caller's `publish()` and defeat the
+      // isolation. Both paths route to `onError`.
+      publish: (msg) => {
+        try {
+          return Promise.resolve(driver.publish(msg)).catch((e) => report("publish", e));
+        } catch (error) {
+          report("publish", error);
+        }
+      },
       close: driver.close ? () => driver.close!() : undefined,
     };
   }

@@ -31,12 +31,20 @@ export function broadcastChannel(opts: { channel: string }): SyncAdapter {
           const envelope = event.data as { id?: string; msg?: SyncMessage } | undefined;
           // Ignore our own echo and anything that isn't a well-formed crossws
           // envelope (a foreign writer may share the channel name). Validate the
-          // shape before deliver() — unlike the text drivers there's no
-          // decodeEnvelope here to reject malformed payloads.
-          if (!envelope || envelope.id === id || typeof envelope.msg?.topic !== "string") {
+          // full shape before deliver() — unlike the text drivers there's no
+          // decodeEnvelope here, so mirror the same contract it enforces
+          // (string topic + namespace, and a string | Uint8Array payload).
+          const msg = envelope?.msg;
+          if (
+            !envelope ||
+            envelope.id === id ||
+            typeof msg?.topic !== "string" ||
+            typeof msg.namespace !== "string" ||
+            !(typeof msg.data === "string" || msg.data instanceof Uint8Array)
+          ) {
             return;
           }
-          deliver(envelope.msg);
+          deliver(msg);
         });
       },
       publish(msg) {

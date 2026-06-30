@@ -29,7 +29,11 @@ export function decodeEnvelope(raw: string): { id: string; msg: SyncMessage } | 
       typeof parsed.id !== "string" ||
       !parsed.msg ||
       typeof parsed.msg.topic !== "string" ||
-      typeof parsed.msg.namespace !== "string"
+      typeof parsed.msg.namespace !== "string" ||
+      // `data` is always a string on the wire (raw text, or base64 for binary).
+      // Reject a non-string so a foreign producer can't leak an object/null
+      // through as `SyncMessage.data`.
+      typeof parsed.msg.data !== "string"
     ) {
       return undefined;
     }

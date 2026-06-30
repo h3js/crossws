@@ -422,6 +422,14 @@ describe("sync (envelope decoding)", () => {
     expect(decodeEnvelope(JSON.stringify({ id: "a", msg: {} }))).toBeUndefined();
     // foreign object missing topic/namespace
     expect(decodeEnvelope(JSON.stringify({ id: "a", msg: { topic: "t" } }))).toBeUndefined();
+    // non-string `data` must be rejected (a foreign producer can't leak an
+    // object/null through as SyncMessage.data)
+    expect(
+      decodeEnvelope(JSON.stringify({ id: "a", msg: { namespace: "", topic: "t", data: {} } })),
+    ).toBeUndefined();
+    expect(
+      decodeEnvelope(JSON.stringify({ id: "a", msg: { namespace: "", topic: "t" } })),
+    ).toBeUndefined();
   });
 
   test("decodeEnvelope accepts a well-formed envelope", () => {

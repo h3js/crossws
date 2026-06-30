@@ -194,6 +194,22 @@ describe("sync (onError observability)", () => {
     await ws.close();
   });
 
+  test("a synchronous relay publish throw is routed to onError, not thrown", async () => {
+    const stages: string[] = [];
+    const sync: SyncAdapter = () => ({
+      subscribe() {},
+      publish() {
+        throw new Error("sync throw"); // synchronous, not a rejection
+      },
+    });
+    const ws = nodeAdapter({ hooks, sync, onError: (_e, ctx) => stages.push(ctx.stage) });
+
+    expect(() => ws.publish("chat", "hello")).not.toThrow();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(stages).toEqual(["publish"]);
+    await ws.close();
+  });
+
   test("a failed initial subscribe is routed to onError", async () => {
     const stages: string[] = [];
     const sync: SyncAdapter = () => ({
