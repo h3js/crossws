@@ -6,6 +6,7 @@ import { adapterUtils, getPeers } from "../adapter.ts";
 import { AdapterHookable } from "../hooks.ts";
 import { Message } from "../message.ts";
 import { Peer, type PeerContext } from "../peer.ts";
+import type { SyncDriver } from "../sync.ts";
 import { StubRequest } from "../_request.ts";
 
 // --- types ---
@@ -41,13 +42,14 @@ export interface UWSOptions extends AdapterOptions {
 const uwsAdapter: Adapter<UWSAdapter, UWSOptions> = (options = {}) => {
   const hooks = new AdapterHookable(options);
   const globalPeers = new Map<string, Set<UWSPeer>>();
+  const baseUtils = adapterUtils(globalPeers, options, { nativePubSub: true });
   return {
-    ...adapterUtils(globalPeers),
+    ...baseUtils,
     websocket: {
       ...options.uws,
       close(ws, code, message) {
         const peers = getPeers(globalPeers, ws.getUserData().namespace);
-        const peer = getPeer(ws, peers);
+        const peer = getPeer(ws, peers, baseUtils.sync);
         ((peer as any)._internal.ws as UwsWebSocketProxy).readyState = 2 /* CLOSING */;
         peers.delete(peer);
         hooks.callHook("close", peer, {
@@ -58,7 +60,7 @@ const uwsAdapter: Adapter<UWSAdapter, UWSOptions> = (options = {}) => {
       },
       message(ws, message, _isBinary) {
         const peers = getPeers(globalPeers, ws.getUserData().namespace);
-        const peer = getPeer(ws, peers);
+        const peer = getPeer(ws, peers, baseUtils.sync);
         hooks.callHook("message", peer, new Message(message, peer));
       },
       drain(ws) {
@@ -68,7 +70,7 @@ const uwsAdapter: Adapter<UWSAdapter, UWSOptions> = (options = {}) => {
       },
       open(ws) {
         const peers = getPeers(globalPeers, ws.getUserData().namespace);
-        const peer = getPeer(ws, peers);
+        const peer = getPeer(ws, peers, baseUtils.sync);
         peers.add(peer);
         hooks.callHook("open", peer);
       },
@@ -140,7 +142,7 @@ export default uwsAdapter;
 
 // --- peer ---
 
-function getPeer(uws: uws.WebSocket<UserData>, peers: Set<UWSPeer>): UWSPeer {
+function getPeer(uws: uws.WebSocket<UserData>, peers: Set<UWSPeer>, sync?: SyncDriver): UWSPeer {
   const uwsData = uws.getUserData();
   if (uwsData.peer) {
     return uwsData.peer;
@@ -152,6 +154,7 @@ function getPeer(uws: uws.WebSocket<UserData>, peers: Set<UWSPeer>): UWSPeer {
     request: uwsData.webReq,
     namespace: uwsData.namespace,
     uwsData,
+    sync,
   });
   uwsData.peer = peer;
   return peer;
@@ -164,6 +167,7 @@ class UWSPeer extends Peer<{
   uws: uws.WebSocket<UserData>;
   ws: UwsWebSocketProxy;
   uwsData: UserData;
+  sync?: SyncDriver;
 }> {
   override get remoteAddress(): string | undefined {
     try {
@@ -194,7 +198,7 @@ class UWSPeer extends Peer<{
     this._internal.uws.unsubscribe(topic);
   }
 
-  publish(topic: string, message: string, options?: { compress?: boolean }) {
+  _publish(topic: string, message: string, options?: { compress?: boolean }) {
     const data = toBufferLike(message);
     const isBinary = typeof data !== "string";
     this._internal.uws.publish(topic, data, isBinary, options?.compress);

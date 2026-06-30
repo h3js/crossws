@@ -5,6 +5,7 @@ import { adapterUtils, getPeers } from "../adapter.ts";
 import { AdapterHookable } from "../hooks.ts";
 import { Message } from "../message.ts";
 import { Peer, type PeerContext } from "../peer.ts";
+import type { SyncDriver } from "../sync.ts";
 
 // --- types ---
 
@@ -23,9 +24,10 @@ const sseAdapter: Adapter<SSEAdapter, SSEOptions> = (opts = {}) => {
   const hooks = new AdapterHookable(opts);
   const globalPeers = new Map<string, Set<SSEPeer>>();
   const peersMap = opts.bidir ? new Map<string, SSEPeer>() : undefined;
+  const baseUtils = adapterUtils(globalPeers, opts);
 
   return {
-    ...adapterUtils(globalPeers),
+    ...baseUtils,
     fetch: async (request: Request) => {
       const { upgradeHeaders, endResponse, context, namespace } = await hooks.upgrade(request);
       if (endResponse) {
@@ -62,6 +64,7 @@ const sseAdapter: Adapter<SSEAdapter, SSEOptions> = (opts = {}) => {
           ws,
           context,
           namespace,
+          sync: baseUtils.sync,
         });
         peers.add(peer);
         if (opts.bidir) {
@@ -104,6 +107,7 @@ class SSEPeer extends Peer<{
   hooks: AdapterHookable;
   context: PeerContext;
   namespace: string;
+  sync?: SyncDriver;
 }> {
   _sseStream: ReadableStream; // server -> client
   _sseStreamController?: ReadableStreamDefaultController;
@@ -138,7 +142,7 @@ class SSEPeer extends Peer<{
     return 0;
   }
 
-  publish(topic: string, data: unknown) {
+  _publish(topic: string, data: unknown) {
     const dataBuff = toString(data);
     for (const peer of this._internal.peers) {
       if (peer !== this && peer._topics.has(topic)) {

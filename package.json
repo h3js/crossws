@@ -19,6 +19,7 @@
   "types": "./dist/index.d.mts",
   "exports": {
     ".": "./dist/index.mjs",
+    "./sync": "./dist/sync.mjs",
     "./adapters/bun": "./dist/adapters/bun.mjs",
     "./adapters/bunny": "./dist/adapters/bunny.mjs",
     "./adapters/deno": "./dist/adapters/deno.mjs",

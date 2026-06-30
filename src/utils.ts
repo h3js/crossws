@@ -33,6 +33,18 @@ export function toBufferLike(val: any): BufferLike {
   return val;
 }
 
+/**
+ * Normalize an arbitrary publish payload to a value a sync driver can relay
+ * (a string or a `Uint8Array`).
+ */
+export function serializeMessage(val: any): string | Uint8Array {
+  const data = toBufferLike(val);
+  if (typeof data === "string") {
+    return data;
+  }
+  return data instanceof Uint8Array ? data : new Uint8Array(data);
+}
+
 export function toString(val: any): string {
   if (typeof val === "string") {
     return val;
@@ -41,8 +53,14 @@ export function toString(val: any): string {
   if (typeof data === "string") {
     return data;
   }
-  const base64 = btoa(String.fromCharCode(...new Uint8Array(data)));
-  return `data:application/octet-stream;base64,${base64}`;
+  // Build the binary string byte-by-byte: `String.fromCharCode(...bytes)`
+  // spreads the whole array as arguments and overflows the call stack on large
+  // payloads, so a big binary SSE frame would throw instead of encoding.
+  let binary = "";
+  for (const byte of new Uint8Array(data)) {
+    binary += String.fromCharCode(byte);
+  }
+  return `data:application/octet-stream;base64,${btoa(binary)}`;
 }
 
 // Forked from sindresorhus/is-plain-obj (MIT)

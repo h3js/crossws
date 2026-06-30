@@ -88,3 +88,27 @@ See [`test/fixture/cloudflare-durable.ts`](https://github.com/h3js/crossws/blob/
 - `bindingName`: Durable Object binding name from environment (default: `$DurableObject`).
 - `instanceName`: Durable Object instance name (default: `crossws`).
 - `resolveDurableStub`: Custom function that resolves Durable Object binding to handle the WebSocket upgrade. This option will override `bindingName` and `instanceName`.
+- `sync`: Optional [sync backplane](/guide/sync) to relay [pub/sub](/guide/pubsub) across instances (see below).
+- `onError`: Observe sync backplane failures. See [delivery semantics](/guide/sync#delivery-semantics).
+
+### Sync across instances
+
+The [sync backplane](/guide/sync) relays [pub/sub](/guide/pubsub) between crossws instances, but on Cloudflare the model is different from a Node-style cluster — so reach for it only when you actually need it. A backplane on Cloudflare requires **Durable Objects**: only a Durable Object's context owns its (hibernatable) sockets via `ctx.getWebSockets()` and can fan a message out to them. In **fallback mode** (no Durable Object binding) each connection is a separate Worker invocation that can't send to another connection's socket, so pub/sub — and a backplane — are not supported there.
+
+- **Single Durable Object (the default).** With one instance (`"crossws"`), every connection across your app already lands on that same Durable Object, so `peer.publish()` is cluster-global out of the box. **No backplane needed.**
+- **Sharded Durable Objects.** If you fan connections across **multiple** instances (e.g. one per room via `resolveDurableStub`), a publish in one instance won't reach the others — a `sync` backplane bridges them.
+
+```js
+import crossws from "crossws/adapters/cloudflare";
+import type { SyncAdapter } from "crossws";
+
+const ws = crossws({
+  hooks,
+  sync: myBackplane, // a custom SyncAdapter (see caveats below)
+});
+```
+
+Two Cloudflare-specific caveats:
+
+- **Inbound delivery into a Durable Object is best-effort.** crossws seeds the fan-out of a relayed message from the instance's in-memory peer map, which a hibernated/evicted Durable Object loses even though its sockets survive in `ctx.getWebSockets()`. A message relayed _into_ a hibernated Durable Object may miss some sockets. **Outbound** relay — a `peer.publish()` in a Durable Object reaching the backplane — is reliable.
+- **Bring a Cloudflare-native driver.** The built-in `redis` / `pgsql` drivers open persistent connections and target Node-like runtimes, so they won't run inside workerd. Write a custom [`SyncAdapter`](/guide/sync#writing-a-driver) over a Cloudflare-native transport (a coordinator Durable Object, [Queues](https://developers.cloudflare.com/queues/), or fetch-based pub/sub) instead.
