@@ -191,6 +191,59 @@ describe("createWebSocketProxy", () => {
     expect(await ws.next()).toBe("echo:dyn");
   });
 
+  test("accepts an async (promise-returning) target resolver", async () => {
+    // The upstream address may not be known when the client connects (e.g. a
+    // worker that's still booting). An async resolver lets the proxy wait.
+    const asyncProxy = nodeAdapter({
+      hooks: createWebSocketProxy({
+        target: async () => {
+          await new Promise((r) => setTimeout(r, 50));
+          return upstreamURL;
+        },
+      }),
+    });
+    const server = createServer((_req, res) => res.end("ok"));
+    server.on("upgrade", asyncProxy.handleUpgrade);
+    const port = await getRandomPort("localhost");
+    await new Promise<void>((resolve) => server.listen(port, resolve));
+    await waitForPort(port);
+    try {
+      // Frames sent before the async target resolves must be buffered and
+      // flushed once the upstream opens.
+      const ws = await wsConnect(`ws://localhost:${port}/`, { skip: 1 });
+      await ws.send("early");
+      expect(await ws.next()).toBe("echo:early");
+    } finally {
+      server.closeAllConnections?.();
+      server.close();
+    }
+  });
+
+  test("closes peer with 1011 when an async target resolver rejects", async () => {
+    const rejectProxy = nodeAdapter({
+      hooks: createWebSocketProxy({
+        target: async () => {
+          throw new Error("worker never came up");
+        },
+      }),
+    });
+    const server = createServer((_req, res) => res.end("ok"));
+    server.on("upgrade", rejectProxy.handleUpgrade);
+    const port = await getRandomPort("localhost");
+    await new Promise<void>((resolve) => server.listen(port, resolve));
+    await waitForPort(port);
+    try {
+      const ws = await wsConnect(`ws://localhost:${port}/`);
+      const event = await new Promise<CloseEvent>((resolve) => {
+        ws.ws.addEventListener("close", (e) => resolve(e as CloseEvent));
+      });
+      expect(event.code).toBe(1011);
+    } finally {
+      server.closeAllConnections?.();
+      server.close();
+    }
+  });
+
   test("propagates upstream close code", async () => {
     const ws = await wsConnect(proxyURL, { skip: 1 });
     const closed = new Promise<CloseEvent>((resolve) => {
