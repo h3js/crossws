@@ -4,7 +4,7 @@ export type { Hooks, ResolveHooks } from "./hooks.ts";
 
 // Adapter
 export { defineWebSocketAdapter } from "./adapter.ts";
-export type { Adapter, AdapterInstance, AdapterOptions } from "./adapter.ts";
+export type { Adapter, AdapterInstance, AdapterOptions, SyncErrorContext } from "./adapter.ts";
 
 // Sync
 export type { SyncAdapter, SyncDriver, SyncMessage } from "./sync.ts";

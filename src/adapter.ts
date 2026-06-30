@@ -1,6 +1,6 @@
 import type { Hooks, ResolveHooks } from "./hooks.ts";
 import type { Peer } from "./peer.ts";
-import type { SyncAdapter, SyncDriver } from "./sync.ts";
+import type { SyncAdapter, SyncDriver, SyncMessage } from "./sync.ts";
 import { serializeMessage } from "./utils.ts";
 
 export function adapterUtils(
@@ -52,22 +52,46 @@ export function adapterUtils(
 
   let sync: SyncDriver | undefined;
   if (options?.sync) {
-    sync = options.sync({ id: crypto.randomUUID() });
-    Promise.resolve(
-      sync.subscribe((msg) => {
-        // A failing subscriber send must not break the relay nor bubble into
-        // the driver's transport callback (e.g. a Redis "message" handler);
-        // isolate per-delivery errors here.
-        try {
-          // `""` namespace means "all namespaces" (server-side global publish).
-          localPublish(msg.topic, msg.data, { namespace: msg.namespace || undefined });
-        } catch (error) {
-          console.error("[crossws] sync delivery failed:", error);
-        }
-      }),
-    ).catch((error) => {
-      console.error("[crossws] failed to subscribe to sync backplane:", error);
-    });
+    // Every sync operation is fire-and-forget (a flaky backplane must never
+    // crash the app or surface as an unhandled rejection), so this reporter is
+    // the only window into a degraded backplane. Route every failure through
+    // the user's `onError`, falling back to `console.error`.
+    const report = (stage: SyncErrorContext["stage"], error: unknown) => {
+      if (options.onError) {
+        options.onError(error, { stage });
+      } else {
+        console.error(`[crossws] sync ${stage} failed:`, error);
+      }
+    };
+    const driver = options.sync({ id: crypto.randomUUID() });
+    const deliver = (msg: SyncMessage) => {
+      // A failing subscriber send must not break the relay nor bubble into the
+      // driver's transport callback (e.g. a Redis "message" handler); isolate
+      // per-delivery errors here.
+      try {
+        // `""` namespace means "all namespaces" (server-side global publish).
+        localPublish(msg.topic, msg.data, { namespace: msg.namespace || undefined });
+      } catch (error) {
+        report("delivery", error);
+      }
+    };
+    // Setup must never crash adapter construction: catch a synchronous throw
+    // (e.g. a driver that opens a connection eagerly in a restricted scope like
+    // workerd module-init) as well as an async subscribe rejection.
+    try {
+      Promise.resolve(driver.subscribe(deliver)).catch((error) => report("subscribe", error));
+    } catch (error) {
+      report("subscribe", error);
+    }
+    // Wrap the driver so the relay callers below (and `Peer.publish`, which
+    // shares this same instance via `_internal.sync`) can fire-and-forget
+    // without each re-implementing rejection isolation: a publish rejection
+    // (e.g. a dropped backplane connection) is caught here and reported.
+    sync = {
+      subscribe: (deliver) => driver.subscribe(deliver),
+      publish: (msg) => Promise.resolve(driver.publish(msg)).catch((e) => report("publish", e)),
+      close: driver.close ? () => driver.close!() : undefined,
+    };
   }
 
   return {
@@ -75,20 +99,12 @@ export function adapterUtils(
     sync,
     publish(topic: string, message: any, options) {
       localPublish(topic, message, options);
-      if (sync) {
-        // Fire-and-forget relay — isolate driver publish rejections (e.g. a
-        // dropped backplane connection) so they log instead of bubbling up as
-        // an unhandled rejection. Mirrors the inbound delivery isolation above.
-        Promise.resolve(
-          sync.publish({
-            namespace: options?.namespace || "",
-            topic,
-            data: serializeMessage(message),
-          }),
-        ).catch((error) => {
-          console.error("[crossws] sync publish failed:", error);
-        });
-      }
+      // Fire-and-forget relay; `sync.publish` isolates its own rejections.
+      sync?.publish({
+        namespace: options?.namespace || "",
+        topic,
+        data: serializeMessage(message),
+      });
     },
     async close(code, reason) {
       // Gracefully close every connected peer via the adapter-specific
@@ -145,6 +161,17 @@ export interface AdapterInstance {
   readonly sync?: SyncDriver;
 }
 
+/** Context passed to {@link AdapterOptions.onError} describing what failed. */
+export interface SyncErrorContext {
+  /**
+   * Which backplane operation failed:
+   * - `subscribe` — the initial subscription to the backplane.
+   * - `publish` — relaying a local publish out to the other instances.
+   * - `delivery` — fanning an inbound remote message out to local subscribers.
+   */
+  stage: "subscribe" | "publish" | "delivery";
+}
+
 export interface AdapterOptions {
   resolve?: ResolveHooks;
   getNamespace?: (request: Request) => string;
@@ -155,6 +182,15 @@ export interface AdapterOptions {
    * stays local to the instance, exactly as before.
    */
   sync?: SyncAdapter;
+  /**
+   * Called when a {@link AdapterOptions.sync} backplane operation fails.
+   *
+   * Relay is fire-and-forget by design — a flaky backplane never throws into
+   * your `publish` call or crashes the process — so this callback is the only
+   * way to observe a degraded backplane (for logging, metrics or alerting).
+   * Defaults to `console.error`. Has no effect without `sync`.
+   */
+  onError?: (error: unknown, context: SyncErrorContext) => void;
 }
 
 export type Adapter<

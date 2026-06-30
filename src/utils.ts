@@ -53,8 +53,14 @@ export function toString(val: any): string {
   if (typeof data === "string") {
     return data;
   }
-  const base64 = btoa(String.fromCharCode(...new Uint8Array(data)));
-  return `data:application/octet-stream;base64,${base64}`;
+  // Build the binary string byte-by-byte: `String.fromCharCode(...bytes)`
+  // spreads the whole array as arguments and overflows the call stack on large
+  // payloads, so a big binary SSE frame would throw instead of encoding.
+  let binary = "";
+  for (const byte of new Uint8Array(data)) {
+    binary += String.fromCharCode(byte);
+  }
+  return `data:application/octet-stream;base64,${btoa(binary)}`;
 }
 
 // Forked from sindresorhus/is-plain-obj (MIT)

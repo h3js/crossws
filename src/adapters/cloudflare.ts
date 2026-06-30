@@ -10,6 +10,7 @@ import { Message } from "../message.ts";
 import { Peer, type PeerContext } from "../peer.ts";
 import { StubRequest } from "../_request.ts";
 import { WSError } from "../error.ts";
+import type { SyncDriver } from "../sync.ts";
 
 type WSDurableObjectStub = CF.DurableObjectStub & {
   webSocketPublish?: (topic: string, data: unknown, opts: any) => Promise<void>;
@@ -65,7 +66,8 @@ const cloudflareAdapter: Adapter<CloudflareDurableAdapter, CloudflareOptions> = 
       }
     });
 
-  const { publish: durablePublish, ...utils } = adapterUtils(globalPeers);
+  const baseUtils = adapterUtils(globalPeers, opts);
+  const { publish: durablePublish, ...utils } = baseUtils;
 
   return {
     ...utils,
@@ -96,6 +98,7 @@ const cloudflareAdapter: Adapter<CloudflareDurableAdapter, CloudflareOptions> = 
         cfCtx,
         context,
         namespace,
+        sync: baseUtils.sync,
       });
       peers.add(peer);
       server.accept();
@@ -142,6 +145,7 @@ const cloudflareAdapter: Adapter<CloudflareDurableAdapter, CloudflareOptions> = 
         server as unknown as CF.WebSocket,
         request,
         namespace,
+        baseUtils.sync,
       );
       peers.add(peer);
       (obj as DurableObjectPub).ctx.acceptWebSocket(server);
@@ -154,11 +158,23 @@ const cloudflareAdapter: Adapter<CloudflareDurableAdapter, CloudflareOptions> = 
       });
     },
     handleDurableMessage: async (obj, ws, message) => {
-      const peer = CloudflareDurablePeer._restore(obj, ws as CF.WebSocket);
+      const peer = CloudflareDurablePeer._restore(
+        obj,
+        ws as CF.WebSocket,
+        undefined,
+        undefined,
+        baseUtils.sync,
+      );
       await hooks.callHook("message", peer, new Message(message, peer));
     },
     handleDurableClose: async (obj, ws, code, reason, wasClean) => {
-      const peer = CloudflareDurablePeer._restore(obj, ws as CF.WebSocket);
+      const peer = CloudflareDurablePeer._restore(
+        obj,
+        ws as CF.WebSocket,
+        undefined,
+        undefined,
+        baseUtils.sync,
+      );
       const peers = getPeers(globalPeers, peer.namespace);
       peers.delete(peer);
       const details = { code, reason, wasClean };
@@ -194,10 +210,19 @@ class CloudflareDurablePeer extends Peer<{
   peers?: never;
   durable: DurableObjectPub;
   namespace: string;
+  sync?: SyncDriver;
 }> {
   override get peers() {
     return new Set(
-      this.#getwebsockets().map((ws) => CloudflareDurablePeer._restore(this._internal.durable, ws)),
+      this.#getwebsockets().map((ws) =>
+        CloudflareDurablePeer._restore(
+          this._internal.durable,
+          ws,
+          undefined,
+          undefined,
+          this._internal.sync,
+        ),
+      ),
     );
   }
 
@@ -245,6 +270,7 @@ class CloudflareDurablePeer extends Peer<{
     ws: AugmentedWebSocket,
     request?: Request | CF.Request,
     namespace?: string,
+    sync?: SyncDriver,
   ): CloudflareDurablePeer {
     let peer = ws._crosswsPeer;
     if (peer) {
@@ -256,6 +282,7 @@ class CloudflareDurablePeer extends Peer<{
       request: (request as Request | undefined) || new StubRequest(state.u || ""),
       namespace: namespace || state.n || "" /* later throws error if empty */,
       durable: durable as DurableObjectPub,
+      sync,
     });
     if (state.i) {
       peer._id = state.i;
@@ -279,14 +306,20 @@ class CloudflareFallbackPeer extends Peer<{
   cfCtx: CF.ExecutionContext;
   context: PeerContext;
   namespace: string;
+  sync?: SyncDriver;
 }> {
   send(data: unknown) {
     this._internal.wsServer.send(toBufferLike(data));
     return 0;
   }
 
-  _publish(_topic: string, _message: any): void {
-    console.warn("[crossws] [cloudflare] pub/sub support requires Durable Objects.");
+  _publish(topic: string, data: unknown): void {
+    const dataBuff = toBufferLike(data);
+    for (const peer of this._internal.peers) {
+      if (peer !== this && peer._topics.has(topic)) {
+        peer._internal.wsServer.send(dataBuff);
+      }
+    }
   }
 
   close(code?: number, reason?: string) {

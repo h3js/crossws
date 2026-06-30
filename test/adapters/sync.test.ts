@@ -170,6 +170,43 @@ describe("sync (adapter close)", () => {
   });
 });
 
+describe("sync (onError observability)", () => {
+  test("relay publish failures are routed to onError, not thrown", async () => {
+    const errors: Array<{ error: unknown; stage: string }> = [];
+    const sync: SyncAdapter = () => ({
+      subscribe() {},
+      publish: () => Promise.reject(new Error("backplane down")),
+    });
+    const ws = nodeAdapter({
+      hooks,
+      sync,
+      onError: (error, ctx) => errors.push({ error, stage: ctx.stage }),
+    });
+
+    // A server-side publish relays through the backplane; the rejection must be
+    // isolated (no throw, no unhandled rejection) and surfaced via onError.
+    expect(() => ws.publish("chat", "hello")).not.toThrow();
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(errors).toHaveLength(1);
+    expect(errors[0]!.stage).toBe("publish");
+    expect((errors[0]!.error as Error).message).toBe("backplane down");
+    await ws.close();
+  });
+
+  test("a failed initial subscribe is routed to onError", async () => {
+    const stages: string[] = [];
+    const sync: SyncAdapter = () => ({
+      subscribe: () => Promise.reject(new Error("cannot subscribe")),
+      publish() {},
+    });
+    nodeAdapter({ hooks, sync, onError: (_error, ctx) => stages.push(ctx.stage) });
+
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(stages).toEqual(["subscribe"]);
+  });
+});
+
 describe("sync (no backplane)", () => {
   let a: Awaited<ReturnType<typeof createInstance>>;
   let b: Awaited<ReturnType<typeof createInstance>>;

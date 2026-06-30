@@ -194,28 +194,23 @@ export abstract class Peer<Internal extends AdapterInternal = AdapterInternal> {
    */
   publish(topic: string, data: unknown, options?: { compress?: boolean }): void {
     this._publish(topic, data, options);
-    const sync = this._internal.sync;
-    if (sync) {
-      // Fire-and-forget relay: `publish` is sync-returning, but a driver's
-      // publish may be async and reject (e.g. a dropped Redis/Postgres
-      // connection). Isolate that here so a transient backplane error logs
-      // instead of surfacing as an unhandled rejection (which crashes Node).
-      Promise.resolve(
-        sync.publish({
-          namespace: this.namespace,
-          topic,
-          data: serializeMessage(data),
-        }),
-      ).catch((error) => {
-        console.error("[crossws] sync publish failed:", error);
-      });
-    }
+    // Fire-and-forget relay to the other instances. The driver handed in via
+    // `_internal.sync` is the wrapped instance from `adapterUtils`, which
+    // isolates its own publish rejections and routes them to `onError`, so a
+    // transient backplane error never surfaces as an unhandled rejection here.
+    this._internal.sync?.publish({
+      namespace: this.namespace,
+      topic,
+      data: serializeMessage(data),
+    });
   }
 
   /**
    * Adapter-specific, relay-free local fan-out to subscribers of a topic
    * (excludes this peer). Implemented by each adapter; used both by
    * {@link Peer.publish} and by the internal cross-instance delivery path.
+   *
+   * @internal Adapter extension point, not part of the stable public API.
    */
   abstract _publish(topic: string, data: unknown, options?: { compress?: boolean }): void;
 
