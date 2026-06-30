@@ -10,10 +10,7 @@ import { Peer, type PeerContext } from "../peer.ts";
 
 export interface BunAdapter extends AdapterInstance {
   websocket: WebSocketHandler<ContextData>;
-  handleUpgrade(
-    req: Request,
-    server: Server<ContextData>,
-  ): Promise<Response | undefined>;
+  handleUpgrade(req: Request, server: Server<ContextData>): Promise<Response | undefined>;
 }
 
 export interface BunOptions extends AdapterOptions {}
@@ -32,9 +29,7 @@ type ContextData = {
 const bunAdapter: Adapter<BunAdapter, BunOptions> = (options = {}) => {
   if (typeof Bun === "undefined") {
     // eslint-disable-next-line unicorn/prefer-type-error
-    throw new Error(
-      "[crossws] Using Bun adapter in an incompatible environment.",
-    );
+    throw new Error("[crossws] Using Bun adapter in an incompatible environment.");
   }
 
   const hooks = new AdapterHookable(options);
@@ -42,8 +37,7 @@ const bunAdapter: Adapter<BunAdapter, BunOptions> = (options = {}) => {
   return {
     ...adapterUtils(globalPeers),
     async handleUpgrade(request, server) {
-      const { upgradeHeaders, endResponse, context, namespace } =
-        await hooks.upgrade(request);
+      const { upgradeHeaders, endResponse, context, namespace } = await hooks.upgrade(request);
       if (endResponse) {
         return endResponse;
       }
@@ -79,6 +73,11 @@ const bunAdapter: Adapter<BunAdapter, BunOptions> = (options = {}) => {
         peers.delete(peer);
         hooks.callHook("close", peer, { code, reason });
       },
+      drain: (ws) => {
+        const peers = getPeers(globalPeers, ws.data.namespace);
+        const peer = getPeer(ws, peers);
+        hooks.callHook("drain", peer);
+      },
     },
   };
 };
@@ -87,10 +86,7 @@ export default bunAdapter;
 
 // --- peer ---
 
-function getPeer(
-  ws: ServerWebSocket<ContextData>,
-  peers: Set<BunPeer>,
-): BunPeer {
+function getPeer(ws: ServerWebSocket<ContextData>, peers: Set<BunPeer>): BunPeer {
   if (ws.data.peer) {
     return ws.data.peer;
   }
@@ -118,20 +114,16 @@ class BunPeer extends Peer<{
     return this._internal.ws.data.context;
   }
 
+  override get bufferedAmount(): number {
+    return this._internal.ws.getBufferedAmount();
+  }
+
   send(data: unknown, options?: { compress?: boolean }): number {
     return this._internal.ws.send(toBufferLike(data), options?.compress);
   }
 
-  publish(
-    topic: string,
-    data: unknown,
-    options?: { compress?: boolean },
-  ): number {
-    return this._internal.ws.publish(
-      topic,
-      toBufferLike(data),
-      options?.compress,
-    );
+  publish(topic: string, data: unknown, options?: { compress?: boolean }): number {
+    return this._internal.ws.publish(topic, toBufferLike(data), options?.compress);
   }
 
   override subscribe(topic: string): void {

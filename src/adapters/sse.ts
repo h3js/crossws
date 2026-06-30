@@ -27,8 +27,7 @@ const sseAdapter: Adapter<SSEAdapter, SSEOptions> = (opts = {}) => {
   return {
     ...adapterUtils(globalPeers),
     fetch: async (request: Request) => {
-      const { upgradeHeaders, endResponse, context, namespace } =
-        await hooks.upgrade(request);
+      const { upgradeHeaders, endResponse, context, namespace } = await hooks.upgrade(request);
       if (endResponse) {
         return endResponse;
       }
@@ -122,20 +121,16 @@ class SSEPeer extends Peer<{
         _internal.ws.readyState = 2 /* CLOSING */;
         _internal.peers.delete(this);
         _internal.peersMap?.delete(this.id);
-        Promise.resolve(this._internal.hooks.callHook("close", this)).finally(
-          () => {
-            _internal.ws.readyState = 3 /* CLOSED */;
-          },
-        );
+        Promise.resolve(this._internal.hooks.callHook("close", this)).finally(() => {
+          _internal.ws.readyState = 3 /* CLOSED */;
+        });
       },
     }).pipeThrough(new TextEncoderStream());
   }
 
   _sendEvent(event: string, data: string) {
     const lines = data.split("\n");
-    this._sseStreamController?.enqueue(
-      `event: ${event}\n${lines.map((l) => `data: ${l}`)}\n\n`,
-    );
+    this._sseStreamController?.enqueue(`event: ${event}\n${lines.map((l) => `data: ${l}`)}\n\n`);
   }
 
   send(data: unknown) {

@@ -1,8 +1,4 @@
-import {
-  type Adapter,
-  type AdapterInstance,
-  defineHooks,
-} from "../../src/index.ts";
+import { type Adapter, type AdapterInstance, defineHooks } from "../../src/index.ts";
 
 export const getIndexHTML = (opts?: { sse?: boolean }): Promise<string> =>
   import("./_index.html.ts").then((r) => r.default(opts));
@@ -13,9 +9,7 @@ export function createDemo<T extends Adapter<any, any>>(
 ): ReturnType<T> {
   const hooks = defineHooks({
     open(peer) {
-      peer.send(
-        `Welcome to the server ${peer}! (namespace: ${peer.namespace})`,
-      );
+      peer.send(`Welcome to the server ${peer}! (namespace: ${peer.namespace})`);
       peer.subscribe("chat");
       peer.publish("chat", `${peer} joined!`);
     },
@@ -34,6 +28,7 @@ export function createDemo<T extends Adapter<any, any>>(
           peer.send({
             id: peer.id,
             remoteAddress: peer.remoteAddress,
+            bufferedAmount: peer.bufferedAmount,
             context: peer.context,
             request: {
               url: peer.request?.url,
@@ -48,6 +43,10 @@ export function createDemo<T extends Adapter<any, any>>(
               bufferedAmount: peer.websocket.bufferedAmount,
             },
           });
+          break;
+        }
+        case "waitForDrain": {
+          peer.waitForDrain({ pollInterval: 10 }).then(() => peer.send("drained"));
           break;
         }
         case "peers": {
@@ -69,7 +68,10 @@ export function createDemo<T extends Adapter<any, any>>(
             return new Response("unauthorized", {
               status: 401,
               statusText: "Unauthorized",
-              headers: { "x-error": "unauthorized" },
+              headers: {
+                "x-error": "unauthorized",
+                "www-authenticate": 'Bearer realm="crossws"',
+              },
             });
           },
         };
@@ -94,10 +96,7 @@ export function createDemo<T extends Adapter<any, any>>(
   });
 }
 
-export function handleDemoRoutes(
-  ws: AdapterInstance,
-  request: Request,
-): Response | undefined {
+export function handleDemoRoutes(ws: AdapterInstance, request: Request): Response | undefined {
   const url = new URL(request.url);
   if (url.pathname === "/peers") {
     return Response.json({

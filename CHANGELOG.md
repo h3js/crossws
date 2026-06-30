@@ -1,5 +1,67 @@
 # Changelog
 
+## v0.4.6
+
+[compare changes](https://github.com/h3js/crossws/compare/v0.4.5...v0.4.6)
+
+### 🚀 Enhancements
+
+- Add `vercel` adapter ([#191](https://github.com/h3js/crossws/pull/191))
+- **proxy:** Allow `forwardProtocol` to rewrite the upstream subprotocol ([#190](https://github.com/h3js/crossws/pull/190))
+
+### 🩹 Fixes
+
+- **cloudflare:** Persist peer namespace in Durable Object attachment ([#188](https://github.com/h3js/crossws/pull/188))
+
+### 🏡 Chore
+
+- **release:** V0.4.5 ([4133ea3](https://github.com/h3js/crossws/commit/4133ea3))
+- Fix typo in docs ([29b7787](https://github.com/h3js/crossws/commit/29b7787))
+- Update pnpm and deps ([b217adf](https://github.com/h3js/crossws/commit/b217adf))
+
+### ❤️ Contributors
+
+- Pooya Parsa ([@pi0](https://github.com/pi0))
+- David Marr ([@marr](https://github.com/marr))
+- Pi0x <x@pi0.io>
+- Andrew Barba ([@AndrewBarba](https://github.com/AndrewBarba))
+
+## v0.4.5
+
+[compare changes](https://github.com/h3js/crossws/compare/v0.4.4...v0.4.5)
+
+### 🚀 Enhancements
+
+- Add `createWebSocketProxy` util ([#184](https://github.com/h3js/crossws/pull/184))
+- New `bunny` adapter ([#179](https://github.com/h3js/crossws/pull/179))
+- Add `fromNodeUpgradeHandler` util + socket.io example ([#185](https://github.com/h3js/crossws/pull/185))
+
+### 🩹 Fixes
+
+- **node:** Do not url-encode upgrade response headers ([ffbed40](https://github.com/h3js/crossws/commit/ffbed40))
+
+### 📦 Build
+
+- Export `ServerWithWSOptions` and  `WSOptions` types ([#180](https://github.com/h3js/crossws/pull/180))
+
+### 🏡 Chore
+
+- Update deps ([ae08ca9](https://github.com/h3js/crossws/commit/ae08ca9))
+- Update deps ([3d83ed0](https://github.com/h3js/crossws/commit/3d83ed0))
+- Update undici in tests ([6291e7c](https://github.com/h3js/crossws/commit/6291e7c))
+- Migrate to oxlint and oxfmt ([6a1a257](https://github.com/h3js/crossws/commit/6a1a257))
+- Update docs ([02427f9](https://github.com/h3js/crossws/commit/02427f9))
+
+### ✅ Tests
+
+- **node:** Add regression test for `EADDRINUSE` handling ([#183](https://github.com/h3js/crossws/pull/183))
+
+### ❤️ Contributors
+
+- Pooya Parsa ([@pi0](https://github.com/pi0))
+- Neko ([@nekomeowww](https://github.com/nekomeowww))
+- Sandro Circi ([@sandros94](https://github.com/sandros94))
+
 ## v0.4.4
 
 [compare changes](https://github.com/h3js/crossws/compare/v0.4.3...v0.4.4)
@@ -92,24 +154,24 @@
 - Stub full request interface ([#156](https://github.com/h3js/crossws/pull/156))
 - Universal server for deno, node and bun using srvx (experimental) ([#158](https://github.com/h3js/crossws/pull/158))
 - Create `PeerContext` interface for type augmentation ([#159](https://github.com/h3js/crossws/pull/159))
-- ⚠️  Namespaced pub/sub peers ([#162](https://github.com/h3js/crossws/pull/162))
-- ⚠️  Support returning context from `upgrade` hook ([#163](https://github.com/h3js/crossws/pull/163))
+- ⚠️ Namespaced pub/sub peers ([#162](https://github.com/h3js/crossws/pull/162))
+- ⚠️ Support returning context from `upgrade` hook ([#163](https://github.com/h3js/crossws/pull/163))
 - **cloudflare:** Support global publish via rpc ([#166](https://github.com/h3js/crossws/pull/166))
 - Add cloudflare and default (sse) server entries ([#167](https://github.com/h3js/crossws/pull/167))
 
 ### 🩹 Fixes
 
-- ⚠️  Do not automatically accept first `sec-webSocket-protocol` ([#142](https://github.com/h3js/crossws/pull/142))
+- ⚠️ Do not automatically accept first `sec-webSocket-protocol` ([#142](https://github.com/h3js/crossws/pull/142))
 
 ### 💅 Refactors
 
 - Remove `uncrypto` dependency ([#153](https://github.com/h3js/crossws/pull/153))
-- ⚠️  Always pass `Request` as first param to `resolve` ([#160](https://github.com/h3js/crossws/pull/160))
+- ⚠️ Always pass `Request` as first param to `resolve` ([#160](https://github.com/h3js/crossws/pull/160))
 - Simplify inspect values ([aa49668](https://github.com/h3js/crossws/commit/aa49668))
 - Throw error when running deno, bun and node adapters in an incompatible environment ([b5fcf2a](https://github.com/h3js/crossws/commit/b5fcf2a))
 - Narrow down `upgrade` return type ([d843cd0](https://github.com/h3js/crossws/commit/d843cd0))
-- ⚠️  Always terminate `upgrade` if `Response` is returned ([#164](https://github.com/h3js/crossws/pull/164))
-- ⚠️  Merge `cloudflare` and `cloudflare-durable` adapters ([#165](https://github.com/h3js/crossws/pull/165))
+- ⚠️ Always terminate `upgrade` if `Response` is returned ([#164](https://github.com/h3js/crossws/pull/164))
+- ⚠️ Merge `cloudflare` and `cloudflare-durable` adapters ([#165](https://github.com/h3js/crossws/pull/165))
 - **cloudflare:** Show warning when pub/sub is not supported ([#144](https://github.com/h3js/crossws/pull/144))
 
 ### 📖 Documentation
@@ -130,12 +192,12 @@
 
 #### ⚠️ Breaking Changes
 
-- ⚠️  Namespaced pub/sub peers ([#162](https://github.com/h3js/crossws/pull/162))
-- ⚠️  Support returning context from `upgrade` hook ([#163](https://github.com/h3js/crossws/pull/163))
-- ⚠️  Do not automatically accept first `sec-webSocket-protocol` ([#142](https://github.com/h3js/crossws/pull/142))
-- ⚠️  Always pass `Request` as first param to `resolve` ([#160](https://github.com/h3js/crossws/pull/160))
-- ⚠️  Always terminate `upgrade` if `Response` is returned ([#164](https://github.com/h3js/crossws/pull/164))
-- ⚠️  Merge `cloudflare` and `cloudflare-durable` adapters ([#165](https://github.com/h3js/crossws/pull/165))
+- ⚠️ Namespaced pub/sub peers ([#162](https://github.com/h3js/crossws/pull/162))
+- ⚠️ Support returning context from `upgrade` hook ([#163](https://github.com/h3js/crossws/pull/163))
+- ⚠️ Do not automatically accept first `sec-webSocket-protocol` ([#142](https://github.com/h3js/crossws/pull/142))
+- ⚠️ Always pass `Request` as first param to `resolve` ([#160](https://github.com/h3js/crossws/pull/160))
+- ⚠️ Always terminate `upgrade` if `Response` is returned ([#164](https://github.com/h3js/crossws/pull/164))
+- ⚠️ Merge `cloudflare` and `cloudflare-durable` adapters ([#165](https://github.com/h3js/crossws/pull/165))
 
 ### ❤️ Contributors
 

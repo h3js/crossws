@@ -1,9 +1,7 @@
 import type { Hooks, ResolveHooks } from "./hooks.ts";
 import type { Peer } from "./peer.ts";
 
-export function adapterUtils(
-  globalPeers: Map<string, Set<Peer>>,
-): AdapterInstance {
+export function adapterUtils(globalPeers: Map<string, Set<Peer>>): AdapterInstance {
   return {
     peers: globalPeers,
     publish(topic: string, message: any, options) {

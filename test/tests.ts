@@ -50,18 +50,15 @@ export function wsTests(getURL: () => string, opts: WSTestOpts): void {
     );
   });
 
-  test.skipIf(opts.resHeaders === false)(
-    "upgrade response headers",
-    async () => {
-      const ws = await wsConnect(getURL());
-      expect(ws.inspector.headers).toMatchObject({
-        connection: expect.stringMatching(/^upgrade$/i),
-        "sec-websocket-accept": expect.any(String),
-        "set-cookie": "cross-ws=1; SameSite=None; Secure",
-        "x-powered-by": "cross-ws",
-      });
-    },
-  );
+  test.skipIf(opts.resHeaders === false)("upgrade response headers", async () => {
+    const ws = await wsConnect(getURL());
+    expect(ws.inspector.headers).toMatchObject({
+      connection: expect.stringMatching(/^upgrade$/i),
+      "sec-websocket-accept": expect.any(String),
+      "set-cookie": "cross-ws=1; SameSite=None; Secure",
+      "x-powered-by": "cross-ws",
+    });
+  });
 
   test.skipIf(opts.adapter === "sse")("negotiate sub-protocol", async () => {
     const ws = await wsConnect(getURL(), {
@@ -112,6 +109,7 @@ export function wsTests(getURL: () => string, opts: WSTestOpts): void {
 
     // Remote address
     if (!/sse|cloudflare/.test(opts.adapter)) {
+      // eslint-disable-next-line no-control-regex
       expect(remoteAddress).toMatch(/:{2}1|(?:0{4}:){7}0{3}1|127\.0\.\0\.1/);
     }
 
@@ -119,6 +117,21 @@ export function wsTests(getURL: () => string, opts: WSTestOpts): void {
     if (opts.adapter !== "cloudflare-durable") {
       expect(context.test).toBe("1");
     }
+  });
+
+  test("peer.bufferedAmount", async () => {
+    const ws = await wsConnect(getURL(), { skip: 1 });
+    await ws.send("debug");
+    const { bufferedAmount } = await ws.next();
+    // Adapters without a buffer signal report 0; capable ones report >= 0.
+    expect(typeof bufferedAmount).toBe("number");
+    expect(bufferedAmount).toBeGreaterThanOrEqual(0);
+  });
+
+  test("peer.waitForDrain", async () => {
+    const ws = await wsConnect(getURL(), { skip: 1 });
+    await ws.send("waitForDrain");
+    expect(await ws.next()).toBe("drained");
   });
 
   test("peer.websocket", async () => {
@@ -133,9 +146,7 @@ export function wsTests(getURL: () => string, opts: WSTestOpts): void {
     expect(websocket).toMatchObject({
       readyState: 1,
       protocol: /ss/.test(opts.adapter) ? "" : "crossws",
-      extensions: /sse/.test(opts.adapter)
-        ? ""
-        : /^permessage-deflate; client_max_window_bits/,
+      extensions: /sse/.test(opts.adapter) ? "" : /^permessage-deflate; client_max_window_bits/,
       url: getURL() + "?foo=bar",
     });
   });
@@ -149,6 +160,7 @@ export function wsTests(getURL: () => string, opts: WSTestOpts): void {
       headers: {
         "content-type": expect.stringMatching(/^text\/plain/),
         "x-error": "unauthorized",
+        "www-authenticate": 'Bearer realm="crossws"',
       },
     });
   });
@@ -181,9 +193,7 @@ export function wsTests(getURL: () => string, opts: WSTestOpts): void {
       const ws1 = await wsConnect(getURL(), { skip: 1 });
       const ws2 = await wsConnect(getURL(), { skip: 1 });
       ws1.skip(); // join message for ws2
-      await fetch(
-        getURL().replace("ws", "http") + `publish?topic=chat&message=ping`,
-      );
+      await fetch(getURL().replace("ws", "http") + `publish?topic=chat&message=ping`);
       expect(await ws1.next()).toBe("ping");
       expect(await ws2.next()).toBe("ping");
     },

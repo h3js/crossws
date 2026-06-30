@@ -1,0 +1,14 @@
+{
+  "name": "crossws-example-socket.io",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node server.mjs"
+  },
+  "dependencies": {
+    "crossws": "workspace:*",
+    "socket.io": "^4.8.1",
+    "srvx": "latest"
+  }
+}

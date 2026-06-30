@@ -30,14 +30,7 @@ export interface UWSAdapter extends AdapterInstance {
 export interface UWSOptions extends AdapterOptions {
   uws?: Exclude<
     uws.WebSocketBehavior<any>,
-    | "close"
-    | "drain"
-    | "message"
-    | "open"
-    | "ping"
-    | "pong"
-    | "subscription"
-    | "upgrade"
+    "close" | "drain" | "message" | "open" | "ping" | "pong" | "subscription" | "upgrade"
   >;
 }
 
@@ -55,20 +48,23 @@ const uwsAdapter: Adapter<UWSAdapter, UWSOptions> = (options = {}) => {
       close(ws, code, message) {
         const peers = getPeers(globalPeers, ws.getUserData().namespace);
         const peer = getPeer(ws, peers);
-        ((peer as any)._internal.ws as UwsWebSocketProxy).readyState =
-          2 /* CLOSING */;
+        ((peer as any)._internal.ws as UwsWebSocketProxy).readyState = 2 /* CLOSING */;
         peers.delete(peer);
         hooks.callHook("close", peer, {
           code,
           reason: message?.toString(),
         });
-        ((peer as any)._internal.ws as UwsWebSocketProxy).readyState =
-          3 /* CLOSED */;
+        ((peer as any)._internal.ws as UwsWebSocketProxy).readyState = 3 /* CLOSED */;
       },
-      message(ws, message, isBinary) {
+      message(ws, message, _isBinary) {
         const peers = getPeers(globalPeers, ws.getUserData().namespace);
         const peer = getPeer(ws, peers);
         hooks.callHook("message", peer, new Message(message, peer));
+      },
+      drain(ws) {
+        const peers = getPeers(globalPeers, ws.getUserData().namespace);
+        const peer = getPeer(ws, peers);
+        hooks.callHook("drain", peer);
       },
       open(ws) {
         const peers = getPeers(globalPeers, ws.getUserData().namespace);
@@ -84,8 +80,7 @@ const uwsAdapter: Adapter<UWSAdapter, UWSOptions> = (options = {}) => {
 
         const webReq = new UWSReqProxy(req);
 
-        const { upgradeHeaders, endResponse, context, namespace } =
-          await hooks.upgrade(webReq);
+        const { upgradeHeaders, endResponse, context, namespace } = await hooks.upgrade(webReq);
         if (endResponse) {
           res.writeStatus(`${endResponse.status} ${endResponse.statusText}`);
           for (const [key, value] of endResponse.headers) {
@@ -172,9 +167,7 @@ class UWSPeer extends Peer<{
 }> {
   override get remoteAddress(): string | undefined {
     try {
-      const addr = new TextDecoder().decode(
-        this._internal.uws.getRemoteAddressAsText(),
-      );
+      const addr = new TextDecoder().decode(this._internal.uws.getRemoteAddressAsText());
       return addr;
     } catch {
       // Error: Invalid access of closed uWS.WebSocket/SSLWebSocket.
@@ -247,7 +240,11 @@ class UWSReqProxy extends StubRequest {
 class UwsWebSocketProxy implements Partial<WebSocket> {
   readyState?: number = 1 /* OPEN */;
 
-  constructor(private _uws: uws.WebSocket<UserData>) {}
+  private _uws: uws.WebSocket<UserData>;
+
+  constructor(_uws: uws.WebSocket<UserData>) {
+    this._uws = _uws;
+  }
 
   get bufferedAmount(): number {
     return this._uws?.getBufferedAmount();

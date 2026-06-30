@@ -9,11 +9,7 @@ import { Peer, type PeerContext } from "../peer.ts";
 import type { IncomingMessage } from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocketServer as _WebSocketServer } from "ws";
-import type {
-  ServerOptions,
-  WebSocketServer,
-  WebSocket as WebSocketT,
-} from "../../types/ws";
+import type { ServerOptions, WebSocketServer, WebSocket as WebSocketT } from "../../types/ws";
 import { StubRequest } from "../_request.ts";
 
 // --- types ---
@@ -46,9 +42,7 @@ export interface NodeOptions extends AdapterOptions {
 // https://github.com/websockets/ws/blob/master/doc/ws.md
 const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
   if ("Deno" in globalThis || "Bun" in globalThis) {
-    throw new Error(
-      "[crossws] Using Node.js adapter in an incompatible environment.",
-    );
+    throw new Error("[crossws] Using Node.js adapter in an incompatible environment.");
   }
 
   const hooks = new AdapterHookable(options);
@@ -74,9 +68,12 @@ const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
     });
     peers.add(peer);
     hooks.callHook("open", peer); // ws is already open
-    ws.on("message", (data: unknown) => {
+    ws.on("message", (data: unknown, isBinary: boolean) => {
       if (Array.isArray(data)) {
         data = Buffer.concat(data);
+      }
+      if (!isBinary && Buffer.isBuffer(data)) {
+        data = data.toString("utf8");
       }
       hooks.callHook("message", peer, new Message(data, peer));
     });
@@ -84,8 +81,17 @@ const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
       peers.delete(peer);
       hooks.callHook("error", peer, new WSError(error));
     });
+    // `ws` has no drain event of its own; the underlying TCP socket emits
+    // `drain` after a backpressured write flushes. Note this tracks the OS
+    // socket buffer, which is an approximation of `peer.bufferedAmount` (the
+    // latter also includes ws's internal sender queue) — treat it as a resume
+    // nudge, not an exact "bufferedAmount reached 0" signal.
+    const socket = (ws as WebSocketT & { _socket?: Duplex })._socket;
+    const onDrain = () => hooks.callHook("drain", peer);
+    socket?.on("drain", onDrain);
     ws.on("close", (code: number, reason: Buffer) => {
       peers.delete(peer);
+      socket?.off("drain", onDrain);
       hooks.callHook("close", peer, {
         code,
         reason: reason?.toString(),
@@ -107,10 +113,16 @@ const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
     handleUpgrade: async (nodeReq, socket, head, webRequest) => {
       const request = webRequest || new NodeReqProxy(nodeReq);
 
-      const { upgradeHeaders, endResponse, context, namespace } =
+      const { upgradeHeaders, endResponse, handled, context, namespace } =
         await hooks.upgrade(request);
       if (endResponse) {
         return sendResponse(socket, endResponse);
+      }
+      // Upgrade was performed by the hook (e.g. delegated to an external
+      // node-style handler via `fromNodeUpgradeHandler`). The socket has
+      // been taken over — leave it alone.
+      if (handled) {
+        return;
       }
 
       (nodeReq as AugmentedReq)._request = request;
@@ -134,6 +146,9 @@ const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
 };
 
 export default nodeAdapter;
+
+export { fromNodeUpgradeHandler } from "../node-handler.ts";
+export type { NodeUpgradeHandler } from "../node-handler.ts";
 
 // --- peer ---
 
@@ -160,16 +175,15 @@ class NodePeer extends Peer<{
       binary: isBinary,
       ...options,
     });
-    return 0;
+    return this._internal.ws.bufferedAmount;
   }
 
-  publish(
-    topic: string,
-    data: unknown,
-    options?: { compress?: boolean },
-  ): void {
+  publish(topic: string, data: unknown, options?: { compress?: boolean }): void {
     const dataBuff = toBufferLike(data);
-    const isBinary = typeof data !== "string";
+    // Derive `isBinary` from the serialized buffer, not the raw input: a plain
+    // object/number is normalized to a JSON/text string by `toBufferLike`, so it
+    // must be sent as text. (Matches the uWS adapter's handling.)
+    const isBinary = typeof dataBuff !== "string";
     const sendOptions = {
       compress: options?.compress,
       binary: isBinary,
@@ -196,9 +210,7 @@ class NodePeer extends Peer<{
 class NodeReqProxy extends StubRequest {
   constructor(req: IncomingMessage) {
     const host = req.headers["host"] || "localhost";
-    const isSecure =
-      (req.socket as any)?.encrypted ??
-      req.headers["x-forwarded-proto"] === "https";
+    const isSecure = (req.socket as any)?.encrypted ?? req.headers["x-forwarded-proto"] === "https";
     const url = `${isSecure ? "https" : "http"}://${host}${req.url}`;
     super(url, { headers: req.headers as Record<string, string> });
   }
@@ -207,10 +219,7 @@ class NodeReqProxy extends StubRequest {
 async function sendResponse(socket: Duplex, res: Response) {
   const head = [
     `HTTP/1.1 ${res.status || 200} ${res.statusText || ""}`,
-    ...[...res.headers.entries()].map(
-      ([key, value]) =>
-        `${encodeURIComponent(key)}: ${encodeURIComponent(value)}`,
-    ),
+    ...[...res.headers.entries()].map(([key, value]) => `${key}: ${value}`),
   ];
   socket.write(head.join("\r\n") + "\r\n\r\n");
   if (res.body) {

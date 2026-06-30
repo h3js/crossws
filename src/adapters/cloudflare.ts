@@ -61,15 +61,9 @@ export interface CloudflareOptions extends AdapterOptions {
 
 // https://developers.cloudflare.com/durable-objects/examples/websocket-hibernation-server/
 
-const cloudflareAdapter: Adapter<
-  CloudflareDurableAdapter,
-  CloudflareOptions
-> = (opts = {}) => {
+const cloudflareAdapter: Adapter<CloudflareDurableAdapter, CloudflareOptions> = (opts = {}) => {
   const hooks = new AdapterHookable(opts);
-  const globalPeers = new Map<
-    string,
-    Set<CloudflareDurablePeer | CloudflareFallbackPeer>
-  >();
+  const globalPeers = new Map<string, Set<CloudflareDurablePeer | CloudflareFallbackPeer>>();
 
   const defaultDurableStubResolver: ResolveDurableStub = async (
     req,
@@ -78,9 +72,7 @@ const cloudflareAdapter: Adapter<
     explicitNamespace,
   ) => {
     const bindingName = opts.bindingName || "$DurableObject";
-    const binding = (env || cfGlobalEnv)[
-      bindingName
-    ] as CF.DurableObjectNamespace;
+    const binding = (env || cfGlobalEnv)[bindingName] as CF.DurableObjectNamespace;
 
     if (!binding) {
       return undefined;
@@ -114,30 +106,21 @@ const cloudflareAdapter: Adapter<
     getDurablePeers,
     handleUpgrade: async (request, cfEnv, cfCtx) => {
       // Upgrade request with Durable Object binding
-      const stub = await resolveDurableStub(
-        request as CF.Request,
-        cfEnv,
-        cfCtx,
-      );
+      const stub = await resolveDurableStub(request as CF.Request, cfEnv, cfCtx);
       if (stub) {
-        return stub.fetch(
-          request as CF.Request,
-        ) as unknown as Promise<Response>;
+        return stub.fetch(request as CF.Request) as unknown as Promise<Response>;
       }
 
       // [Fallback] Upgrade request in same Worker
-      const { upgradeHeaders, endResponse, context, namespace } =
-        await hooks.upgrade(request as unknown as Request, {
-          cf: { runtime: "worker" },
-        });
+      const { upgradeHeaders, endResponse, context, namespace } = await hooks.upgrade(
+        request as unknown as Request,
+        { cf: { runtime: "worker" } },
+      );
       if (endResponse) {
         return endResponse as unknown as Response;
       }
 
-      const pair = new WebSocketPair() as unknown as [
-        CF.WebSocket,
-        CF.WebSocket,
-      ];
+      const pair = new WebSocketPair() as unknown as [CF.WebSocket, CF.WebSocket];
       const client = pair[0];
       const server = pair[1];
       const peer = new CloudflareFallbackPeer({
@@ -172,14 +155,13 @@ const cloudflareAdapter: Adapter<
         headers: upgradeHeaders,
       }) as unknown as Response;
     },
-    handleDurableInit: async (obj, state, env) => {
+    handleDurableInit: async (_obj, _state, _env) => {
       // placeholder
     },
     handleDurableUpgrade: async (obj, request) => {
-      const { upgradeHeaders, endResponse, namespace } = await hooks.upgrade(
-        request as Request,
-        { cf: { runtime: "DO" } },
-      );
+      const { upgradeHeaders, endResponse, namespace } = await hooks.upgrade(request as Request, {
+        cf: { runtime: "DO" },
+      });
       if (endResponse) {
         return endResponse;
       }
@@ -223,12 +205,7 @@ const cloudflareAdapter: Adapter<
       }
     },
     publish: async (topic, data, opts) => {
-      const stub = await resolveDurableStub(
-        undefined,
-        cfGlobalEnv,
-        undefined,
-        opts?.namespace,
-      );
+      const stub = await resolveDurableStub(undefined, cfGlobalEnv, undefined, opts?.namespace);
 
       if (!stub) {
         throw new Error("[crossws] Durable Object binding cannot be resolved.");
@@ -249,10 +226,7 @@ export default cloudflareAdapter;
 
 // --- peer ---
 
-function getDurablePeers(
-  obj: DurableObjectPub,
-  topic?: string,
-): CloudflareDurablePeer[] {
+function getDurablePeers(obj: DurableObjectPub, topic?: string): CloudflareDurablePeer[] {
   const peers: CloudflareDurablePeer[] = [];
 
   const websockets = obj.ctx.getWebSockets() as unknown as AugmentedWebSocket[];
@@ -277,9 +251,7 @@ class CloudflareDurablePeer extends Peer<{
 }> {
   override get peers() {
     return new Set(
-      this.#getwebsockets().map((ws) =>
-        CloudflareDurablePeer._restore(this._internal.durable, ws),
-      ),
+      this.#getwebsockets().map((ws) => CloudflareDurablePeer._restore(this._internal.durable, ws)),
     );
   }
 
@@ -333,12 +305,10 @@ class CloudflareDurablePeer extends Peer<{
       return peer;
     }
     const state = (ws.deserializeAttachment() || {}) as AttachedState;
-    const peerNamespace =
-      namespace || state.n || ""; /* later throws error if empty */
+    const peerNamespace = namespace || state.n || ""; /* later throws error if empty */
     peer = ws._crosswsPeer = new CloudflareDurablePeer({
       ws: ws as CF.WebSocket,
-      request:
-        (request as Request | undefined) || new StubRequest(state.u || ""),
+      request: (request as Request | undefined) || new StubRequest(state.u || ""),
       namespace: peerNamespace,
       durable: durable as DurableObjectPub,
     });
@@ -349,9 +319,7 @@ class CloudflareDurablePeer extends Peer<{
       state.u = request.url;
     }
     state.i = peer.id;
-
     state.n = peerNamespace;
-
     setAttachedState(ws, state);
     return peer;
   }
@@ -372,9 +340,7 @@ class CloudflareFallbackPeer extends Peer<{
   }
 
   publish(_topic: string, _message: any): void {
-    console.warn(
-      "[crossws] [cloudflare] pub/sub support requires Durable Objects.",
-    );
+    console.warn("[crossws] [cloudflare] pub/sub support requires Durable Objects.");
   }
 
   close(code?: number, reason?: string) {
@@ -430,16 +396,9 @@ export interface CloudflareDurableAdapter extends AdapterInstance {
     context: CF.ExecutionContext,
   ): Promise<Response>;
 
-  handleDurableInit(
-    obj: DurableObject,
-    state: DurableObjectState,
-    env: unknown,
-  ): void;
+  handleDurableInit(obj: DurableObject, state: DurableObjectState, env: unknown): void;
 
-  handleDurableUpgrade(
-    obj: DurableObject,
-    req: Request | CF.Request,
-  ): Promise<Response>;
+  handleDurableUpgrade(obj: DurableObject, req: Request | CF.Request): Promise<Response>;
 
   handleDurableMessage(
     obj: DurableObject,

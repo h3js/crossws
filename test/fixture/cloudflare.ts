@@ -1,8 +1,5 @@
 // You can run this demo using `npm run play:cf` in repo
-import type {
-  ExecutionContext,
-  Response as CFResponse,
-} from "@cloudflare/workers-types";
+import type { ExecutionContext, Response as CFResponse } from "@cloudflare/workers-types";
 import cloudflareAdapter from "../../src/adapters/cloudflare.ts";
 import { createDemo, getIndexHTML, handleDemoRoutes } from "./_shared.ts";
 

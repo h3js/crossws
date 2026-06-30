@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>crossws + socket.io</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 40rem;
+        margin: 2rem auto;
+        padding: 0 1rem;
+      }
+      #log {
+        list-style: none;
+        padding: 0;
+        margin-top: 1rem;
+      }
+      #log li {
+        padding: 0.25rem 0;
+        border-bottom: 1px solid #eee;
+        font-family: ui-monospace, monospace;
+        font-size: 0.85rem;
+      }
+      form {
+        display: flex;
+        gap: 0.5rem;
+      }
+      input {
+        flex: 1;
+        padding: 0.5rem;
+      }
+      button {
+        padding: 0.5rem 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>crossws + socket.io</h1>
+    <form id="form">
+      <input id="input" autocomplete="off" placeholder="message" />
+      <button type="submit">send</button>
+    </form>
+    <ul id="log"></ul>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+      const socket = io();
+      const logEl = document.getElementById("log");
+      const log = (line) => {
+        const li = document.createElement("li");
+        li.textContent = line;
+        logEl.prepend(li);
+      };
+
+      socket.on("connect", () => log(`[connect] ${socket.id}`));
+      socket.on("disconnect", (reason) => log(`[disconnect] ${reason}`));
+      socket.on("welcome", (m) => log(`[welcome] ${JSON.stringify(m)}`));
+      socket.on("message", (m) => log(`[message] ${JSON.stringify(m)}`));
+
+      document.getElementById("form").addEventListener("submit", (e) => {
+        e.preventDefault();
+        const input = document.getElementById("input");
+        if (!input.value) return;
+        socket.emit("message", input.value);
+        input.value = "";
+      });
+    </script>
+  </body>
+</html>

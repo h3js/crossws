@@ -30,8 +30,7 @@ export class WebSocketSSE extends _EventTarget implements web.WebSocket {
   onclose: ((this: web.WebSocket, ev: web.CloseEvent) => any) | null = null;
   onerror: ((this: web.WebSocket, ev: web.Event) => any) | null = null;
   onopen: ((this: web.WebSocket, ev: web.Event) => any) | null = null;
-  onmessage: ((this: web.WebSocket, ev: web.MessageEvent<any>) => any) | null =
-    null;
+  onmessage: ((this: web.WebSocket, ev: web.MessageEvent<any>) => any) | null = null;
 
   binaryType: BinaryType = "blob";
   readyState: number = WebSocketSSE.CONNECTING;

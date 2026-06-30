@@ -1,10 +1,10 @@
-import { mkdir, writeFile, glob, rm } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { defineBuildConfig } from "obuild/config";
 
-const adapters = ["bun", "cloudflare", "deno", "node", "sse", "uws"];
+const adapters = ["bun", "bunny", "cloudflare", "deno", "node", "sse", "uws", "vercel"];
 
-const servers = ["bun", "cloudflare", "default", "deno", "node"];
+const servers = ["bun", "bunny", "cloudflare", "default", "deno", "node"];
 
 export default defineBuildConfig({
   entries: [
@@ -38,8 +38,7 @@ export default defineBuildConfig({
       for (const entry of entries) {
         const dst = join(ctx.pkgDir, entry + ".d.ts");
         await mkdir(dirname(dst), { recursive: true });
-        let relativePath =
-          ("..".repeat(entry.split("/").length - 1) || ".") + `/dist/${entry}`;
+        let relativePath = ("..".repeat(entry.split("/").length - 1) || ".") + `/dist/${entry}`;
         if (entry === "websocket") {
           relativePath += "/native";
         } else if (entry === "server") {

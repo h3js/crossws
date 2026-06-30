@@ -40,10 +40,7 @@ export class $DurableObject extends DurableObject {
     return ws.handleDurablePublish(this, topic, message, opts);
   }
 
-  override async webSocketMessage(
-    client: WebSocket,
-    message: ArrayBuffer | string,
-  ): Promise<void> {
+  override async webSocketMessage(client: WebSocket, message: ArrayBuffer | string): Promise<void> {
     return ws.handleDurableMessage(this, client, message);
   }
 

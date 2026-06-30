@@ -31,14 +31,12 @@ export class AdapterHookable {
         : resolveHooksPromise?.[name];
 
     // In parallel, call global hook and resolve hook implementation
-    return Promise.all([globalPromise, resolvePromise]).then(
-      ([globalRes, hook]) => {
-        const hookResPromise = hook?.(arg1 as any, arg2 as any);
-        return hookResPromise instanceof Promise
-          ? hookResPromise.then((hookRes) => hookRes || globalRes)
-          : hookResPromise || globalRes;
-      },
-    ) as Promise<any>;
+    return Promise.all([globalPromise, resolvePromise]).then(([globalRes, hook]) => {
+      const hookResPromise = hook?.(arg1 as any, arg2 as any);
+      return hookResPromise instanceof Promise
+        ? hookResPromise.then((hookRes) => hookRes || globalRes)
+        : hookResPromise || globalRes;
+    }) as Promise<any>;
   }
 
   async upgrade(
@@ -49,9 +47,9 @@ export class AdapterHookable {
     namespace: string;
     upgradeHeaders?: HeadersInit;
     endResponse?: Response;
+    handled?: boolean;
   }> {
-    let namespace =
-      this.options.getNamespace?.(request) ?? new URL(request.url).pathname;
+    let namespace = this.options.getNamespace?.(request) ?? new URL(request.url).pathname;
 
     const context = request.context || {};
 
@@ -68,13 +66,16 @@ export class AdapterHookable {
         namespace = (res as { namespace: string }).namespace;
       }
       if ((res as { context?: Record<string, unknown> }).context) {
-        Object.assign(
-          context,
-          (res as { context?: Record<string, unknown> }).context,
-        );
+        Object.assign(context, (res as { context?: Record<string, unknown> }).context);
       }
       if (res instanceof Response) {
         return { context, namespace, endResponse: res };
+      }
+      if ((res as { handled?: boolean }).handled) {
+        // Hook took ownership of the socket — any `headers` returned
+        // alongside `handled` are ignored since the adapter skips its
+        // own upgrade and no response will be written from here.
+        return { context, namespace, handled: true };
       }
       if (res.headers) {
         return {
@@ -100,9 +101,7 @@ export class AdapterHookable {
 
 // --- types ---
 
-export function defineHooks<T extends Partial<Hooks> = Partial<Hooks>>(
-  hooks: T,
-): T {
+export function defineHooks<T extends Partial<Hooks> = Partial<Hooks>>(hooks: T): T {
   return hooks;
 }
 
@@ -128,6 +127,10 @@ export interface Hooks {
    * - You can return { headers } to modify the response.
    * - You can return { namespace } to change the pub/sub namespace.
    * - You can return { context } to provide a custom peer context.
+   * - You can return { handled: true } to signal that the upgrade has
+   *   already been performed by the hook (e.g. delegated to an external
+   *   node-style `(req, socket, head)` handler). The adapter will then
+   *   leave the socket alone and skip its own upgrade.
    *
    * @param request
    * @throws {Response}
@@ -138,7 +141,12 @@ export interface Hooks {
     },
     context?: UpgradeContext,
   ) => MaybePromise<
-    | { headers?: HeadersInit; namespace?: string; context?: PeerContext }
+    | {
+        headers?: HeadersInit;
+        namespace?: string;
+        context?: PeerContext;
+        handled?: boolean;
+      }
     | Response
     | void
   >;
@@ -150,10 +158,16 @@ export interface Hooks {
   open: (peer: Peer) => MaybePromise<void>;
 
   /** A socket is closed */
-  close: (
-    peer: Peer,
-    details: { code?: number; reason?: string },
-  ) => MaybePromise<void>;
+  close: (peer: Peer, details: { code?: number; reason?: string }) => MaybePromise<void>;
+
+  /**
+   * The send buffer has drained after backpressure, so it is safe to resume
+   * sending. Pair with {@link Peer.bufferedAmount} to throttle senders.
+   *
+   * **Note:** Only emitted by adapters that expose a drain signal. Refer to the
+   * [compatibility table](https://crossws.h3.dev/guide/peer#compatibility).
+   */
+  drain: (peer: Peer) => MaybePromise<void>;
 
   /** An error occurs */
   error: (peer: Peer, error: WSError) => MaybePromise<void>;
