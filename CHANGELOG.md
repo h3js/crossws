@@ -1,5 +1,40 @@
 # Changelog
 
+## v0.4.7
+
+[compare changes](https://github.com/h3js/crossws/compare/v0.4.6...v0.4.7)
+
+### 🚀 Enhancements
+
+- **proxy:** Support async target resolver in createWebSocketProxy ([#196](https://github.com/h3js/crossws/pull/196))
+- **peer:** Backpressure support ([#195](https://github.com/h3js/crossws/pull/195))
+- **pubsub:** Sync backplane ([#192](https://github.com/h3js/crossws/pull/192))
+
+### 🩹 Fixes
+
+- **deno:** Capture remoteAddress eagerly at upgrade time ([29d8519](https://github.com/h3js/crossws/commit/29d8519))
+- **deno:** Read remoteAddr before upgrading the request ([af5fe64](https://github.com/h3js/crossws/commit/af5fe64))
+- **deno:** Snapshot request url and headers before upgrade ([1499e60](https://github.com/h3js/crossws/commit/1499e60))
+- **node:** Publish non-string payloads as text frames ([#193](https://github.com/h3js/crossws/pull/193))
+
+### 📖 Documentation
+
+- Add auth and context ([#112](https://github.com/h3js/crossws/pull/112))
+
+### 🏡 Chore
+
+- **release:** V0.4.6 ([d1a1861](https://github.com/h3js/crossws/commit/d1a1861))
+- Update deps ([efe777c](https://github.com/h3js/crossws/commit/efe777c))
+- Avoid non-strippable ts syntax ([3ab2fac](https://github.com/h3js/crossws/commit/3ab2fac))
+- Add bench suite ([3ae96eb](https://github.com/h3js/crossws/commit/3ae96eb))
+- Update deps ([7d11d0f](https://github.com/h3js/crossws/commit/7d11d0f))
+
+### ❤️ Contributors
+
+- Pooya Parsa ([@pi0](https://github.com/pi0))
+- Pi0x <x@pi0.io>
+- Sandro Circi ([@sandros94](https://github.com/sandros94))
+
 ## v0.4.6
 
 [compare changes](https://github.com/h3js/crossws/compare/v0.4.5...v0.4.6)
