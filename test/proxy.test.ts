@@ -8,12 +8,7 @@ import { getRandomPort, waitForPort } from "get-port-please";
 import { WebSocket as WsWebSocket } from "ws";
 import nodeAdapter from "../src/adapters/node.ts";
 import { createWebSocketProxy, defineHooks } from "../src/index.ts";
-import {
-  _normalizeOutgoingCode,
-  _parseUnixTarget,
-  _remapIncomingCode,
-  _resolveProtocols,
-} from "../src/proxy.ts";
+import { _normalizeOutgoingCode, _remapIncomingCode, _resolveProtocols } from "../src/proxy.ts";
 import { wsConnect } from "./_utils.ts";
 
 describe("createWebSocketProxy", () => {
@@ -671,30 +666,6 @@ describe("createWebSocketProxy internals", () => {
     for (const code of [1001, 1005, 1006, 1008, 1011, 1015, 2999, 5000]) {
       expect(_normalizeOutgoingCode(code)).toBe(1000);
     }
-  });
-
-  test("_parseUnixTarget splits socket path from request path", () => {
-    const parse = (s: string) => _parseUnixTarget(new URL(s));
-    // Absolute socket path + request path.
-    expect(parse("ws+unix:///run/app.sock:/chat")).toEqual({
-      socketPath: "/run/app.sock",
-      path: "/chat",
-    });
-    // Query string is carried onto the request path.
-    expect(parse("ws+unix:///run/app.sock:/chat?room=1")).toEqual({
-      socketPath: "/run/app.sock",
-      path: "/chat?room=1",
-    });
-    // Missing request path defaults to "/".
-    expect(parse("ws+unix:///run/app.sock:")).toEqual({
-      socketPath: "/run/app.sock",
-      path: "/",
-    });
-    // No colon at all — the whole path is the socket path.
-    expect(parse("ws+unix:///run/app.sock")).toEqual({
-      socketPath: "/run/app.sock",
-      path: "/",
-    });
   });
 
   test("_remapIncomingCode rewrites reserved pseudo-codes before peer close", () => {

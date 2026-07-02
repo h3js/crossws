@@ -1,5 +1,9 @@
 // Unix-socket proxy fixture for Deno. Spawned by test/proxy-runtimes.test.ts.
 // Run manually with: deno run --unstable-byonm --unstable-net -A ./proxy-unix.deno.ts
+//
+// Exercises out-of-the-box `ws+unix:` proxying on Deno: crossws dials the target
+// through the per-runtime `crossws/websocket` Deno client (which routes the
+// transport via a unix `Deno.createHttpClient`), no custom `WebSocket` required.
 
 import denoAdapter from "../../src/adapters/deno.ts";
 import { createWebSocketProxy, defineHooks } from "../../src/index.ts";
@@ -31,7 +35,7 @@ Deno.serve({ path: socketPath }, (request, info) =>
     : new Response("ok"),
 );
 
-// TCP proxy dialing the unix upstream out of the box (Deno `client` transport).
+// TCP proxy dialing the unix upstream out of the box (Deno `crossws/websocket`).
 const proxy = denoAdapter({
   hooks: createWebSocketProxy({ target: `ws+unix://${socketPath}:/` }),
 });

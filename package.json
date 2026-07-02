@@ -43,8 +43,8 @@
     "./websocket": {
       "browser": "./dist/websocket/native.mjs",
       "worker": "./dist/websocket/native.mjs",
-      "bun": "./dist/websocket/native.mjs",
-      "deno": "./dist/websocket/native.mjs",
+      "bun": "./dist/websocket/bun.mjs",
+      "deno": "./dist/websocket/deno.mjs",
       "edge-light": "./dist/websocket/native.mjs",
       "workerd": "./dist/websocket/native.mjs",
       "node": "./dist/websocket/node.mjs",

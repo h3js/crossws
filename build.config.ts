@@ -15,6 +15,8 @@ export default defineBuildConfig({
         "src/sync.ts",
         "src/websocket/native.ts",
         "src/websocket/node.ts",
+        "src/websocket/deno.ts",
+        "src/websocket/bun.ts",
         "src/websocket/sse.ts",
         ...adapters.map((id) => `src/adapters/${id}.ts`),
         ...servers.map((id) => `src/server/${id}.ts`),

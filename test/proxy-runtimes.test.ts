@@ -7,7 +7,7 @@ import { wsConnect } from "./_utils.ts";
 // Cross-runtime coverage for out-of-the-box `ws+unix:` proxying. Node is covered
 // in-process by proxy.test.ts; here we spawn real Deno and Bun processes running
 // a fixture that proxies (over TCP) to an echo upstream bound to a unix socket,
-// exercising each runtime's native dialing strategy end to end.
+// exercising each runtime's `crossws/websocket` dialing strategy end to end.
 const fixtureDir = fileURLToPath(new URL("fixture", import.meta.url));
 
 function unixProxySuite(runtime: string, cmd: string) {
