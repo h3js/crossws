@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.4.8
+
+[compare changes](https://github.com/h3js/crossws/compare/v0.4.7...v0.4.8)
+
+### 🚀 Enhancements
+
+- **proxy:** Support unix socket targets out of the box ([#197](https://github.com/h3js/crossws/pull/197))
+
+### 🩹 Fixes
+
+- **client:** Honor 3rd-arg options (headers) on bun and node ([#199](https://github.com/h3js/crossws/pull/199))
+
+### 🏡 Chore
+
+- Update deps ([096cfda](https://github.com/h3js/crossws/commit/096cfda))
+
+### ❤️ Contributors
+
+- Pooya Parsa ([@pi0](https://github.com/pi0))
+- Pi0x <x@pi0.io>
+
 ## v0.4.7
 
 [compare changes](https://github.com/h3js/crossws/compare/v0.4.6...v0.4.7)
