@@ -1,6 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { createServer, Server } from "node:http";
+import { existsSync, unlinkSync } from "node:fs";
+import { connect as netConnect } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { getRandomPort, waitForPort } from "get-port-please";
+import { WebSocket as WsWebSocket } from "ws";
 import nodeAdapter from "../src/adapters/node.ts";
 import { createWebSocketProxy, defineHooks } from "../src/index.ts";
 import { _normalizeOutgoingCode, _remapIncomingCode, _resolveProtocols } from "../src/proxy.ts";
@@ -274,6 +279,138 @@ describe("createWebSocketProxy", () => {
     }
   });
 
+  test("proxies to a unix-socket upstream out of the box (no custom WebSocket)", async () => {
+    // A `ws+unix://<socketPath>:<pathname>` target works without any custom
+    // `WebSocket` constructor: the proxy picks the right per-runtime dialing
+    // strategy internally. On this Node test runner that means a lazy
+    // `import("ws")` (Node's global undici WebSocket rejects the scheme).
+    const socketPath = join(tmpdir(), `crossws-proxy-unix-${process.pid}.sock`);
+    if (existsSync(socketPath)) unlinkSync(socketPath);
+
+    // Upstream echo server bound to the unix socket instead of a TCP port.
+    const unixUpstream = nodeAdapter({
+      hooks: defineHooks({
+        message(peer, message) {
+          peer.send(`echo:${message.text()}`);
+        },
+      }),
+    });
+    const unixUpstreamServer = createServer((_req, res) => res.end("ok"));
+    unixUpstreamServer.on("upgrade", unixUpstream.handleUpgrade);
+    await new Promise<void>((resolve) => unixUpstreamServer.listen(socketPath, resolve));
+
+    // No `WebSocket` option — the proxy resolves the dialer per runtime.
+    const unixProxy = nodeAdapter({
+      hooks: createWebSocketProxy({
+        target: `ws+unix://${socketPath}:/chat`,
+      }),
+    });
+    const server = createServer((_req, res) => res.end("ok"));
+    server.on("upgrade", unixProxy.handleUpgrade);
+    const port = await getRandomPort("localhost");
+    await new Promise<void>((resolve) => server.listen(port, resolve));
+    await waitForPort(port);
+    try {
+      const ws = await wsConnect(`ws://localhost:${port}/`);
+      await ws.send("unix");
+      expect(await ws.next()).toBe("echo:unix");
+    } finally {
+      server.closeAllConnections?.();
+      server.close();
+      unixUpstreamServer.closeAllConnections?.();
+      unixUpstreamServer.close();
+      if (existsSync(socketPath)) unlinkSync(socketPath);
+    }
+  });
+
+  test("proxies to a unix-socket upstream with an explicit ws WebSocket", async () => {
+    // An explicit `WebSocket` constructor is honored verbatim (bypassing the
+    // per-runtime strategy) — the `ws` client dials `ws+unix:` directly.
+    const socketPath = join(tmpdir(), `crossws-proxy-unix-explicit-${process.pid}.sock`);
+    if (existsSync(socketPath)) unlinkSync(socketPath);
+
+    const unixUpstream = nodeAdapter({
+      hooks: defineHooks({
+        message(peer, message) {
+          peer.send(`echo:${message.text()}`);
+        },
+      }),
+    });
+    const unixUpstreamServer = createServer((_req, res) => res.end("ok"));
+    unixUpstreamServer.on("upgrade", unixUpstream.handleUpgrade);
+    await new Promise<void>((resolve) => unixUpstreamServer.listen(socketPath, resolve));
+
+    const unixProxy = nodeAdapter({
+      hooks: createWebSocketProxy({
+        target: `ws+unix://${socketPath}:/`,
+        WebSocket: WsWebSocket as unknown as typeof WebSocket,
+      }),
+    });
+    const server = createServer((_req, res) => res.end("ok"));
+    server.on("upgrade", unixProxy.handleUpgrade);
+    const port = await getRandomPort("localhost");
+    await new Promise<void>((resolve) => server.listen(port, resolve));
+    await waitForPort(port);
+    try {
+      const ws = await wsConnect(`ws://localhost:${port}/`);
+      await ws.send("unix");
+      expect(await ws.next()).toBe("echo:unix");
+    } finally {
+      server.closeAllConnections?.();
+      server.close();
+      unixUpstreamServer.closeAllConnections?.();
+      unixUpstreamServer.close();
+      if (existsSync(socketPath)) unlinkSync(socketPath);
+    }
+  });
+
+  test("dials a unix socket via a webSocketOptions transport override", async () => {
+    // Some runtimes (Deno) reject the `ws+unix:` scheme and can only reach a
+    // unix socket by redirecting the transport through a constructor option
+    // (Deno's `client`). `webSocketOptions` is the escape hatch for that: here
+    // we keep a plain `ws://` target and inject `ws`'s `createConnection` to
+    // dial the socket — the same shape a Deno consumer would use for `client`.
+    const socketPath = join(tmpdir(), `crossws-proxy-wsopts-${process.pid}.sock`);
+    if (existsSync(socketPath)) unlinkSync(socketPath);
+
+    const unixUpstream = nodeAdapter({
+      hooks: defineHooks({
+        message(peer, message) {
+          peer.send(`echo:${message.text()}`);
+        },
+      }),
+    });
+    const unixUpstreamServer = createServer((_req, res) => res.end("ok"));
+    unixUpstreamServer.on("upgrade", unixUpstream.handleUpgrade);
+    await new Promise<void>((resolve) => unixUpstreamServer.listen(socketPath, resolve));
+
+    const optsProxy = nodeAdapter({
+      hooks: createWebSocketProxy({
+        target: "ws://localhost/",
+        WebSocket: WsWebSocket as unknown as typeof WebSocket,
+        webSocketOptions: () => ({
+          createConnection: () => netConnect({ path: socketPath }),
+        }),
+      }),
+    });
+    const server = createServer((_req, res) => res.end("ok"));
+    server.on("upgrade", optsProxy.handleUpgrade);
+    const port = await getRandomPort("localhost");
+    await new Promise<void>((resolve) => server.listen(port, resolve));
+    await waitForPort(port);
+    try {
+      const ws = await wsConnect(`ws://localhost:${port}/`);
+      await ws.send("via-opts");
+      expect(await ws.next()).toBe("echo:via-opts");
+    } finally {
+      server.closeAllConnections?.();
+      server.close();
+      unixUpstreamServer.closeAllConnections?.();
+      unixUpstreamServer.close();
+      if (existsSync(socketPath)) unlinkSync(socketPath);
+    }
+  });
+
   test("propagates upstream close code", async () => {
     const ws = await wsConnect(proxyURL, { skip: 1 });
     const closed = new Promise<CloseEvent>((resolve) => {
@@ -379,6 +516,81 @@ describe("createWebSocketProxy unit hooks", () => {
     expect(calls[0]!.options).toEqual({
       headers: { cookie: "sid=abc", "x-trace": "t1" },
     });
+  });
+
+  test("merges webSocketOptions into the constructor's third argument", () => {
+    const calls: Array<{ options: unknown }> = [];
+    class StubWS extends EventTarget {
+      binaryType = "arraybuffer";
+      readyState = 0;
+      constructor(_url: unknown, _protocols: unknown, options?: unknown) {
+        super();
+        calls.push({ options });
+      }
+      send(): void {}
+      close(): void {}
+    }
+    const peer = {
+      id: "p-opts",
+      request: new Request("http://localhost/", { headers: { cookie: "sid=abc" } }),
+      close() {},
+      send() {},
+    };
+
+    // A per-peer resolver's keys land in the third argument, and the dedicated
+    // `headers` option is applied on top of any `headers` key it returns.
+    const marker = { transport: "unix" };
+    const withResolver = createWebSocketProxy({
+      target: "ws://upstream.invalid/",
+      WebSocket: StubWS as unknown as typeof WebSocket,
+      connectTimeout: 0,
+      webSocketOptions: (p) => ({ client: marker, headers: { "x-ignored": p.id } }),
+      headers: (p) => ({ cookie: p.request?.headers.get("cookie") ?? "" }),
+    });
+    withResolver.open?.(peer as never);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.options).toEqual({
+      client: marker,
+      headers: { cookie: "sid=abc" },
+    });
+
+    // A static object works too, and passes through with no headers option.
+    calls.length = 0;
+    const withStatic = createWebSocketProxy({
+      target: "ws://upstream.invalid/",
+      WebSocket: StubWS as unknown as typeof WebSocket,
+      connectTimeout: 0,
+      webSocketOptions: { agent: false },
+    });
+    withStatic.open?.({ ...peer, id: "p-opts-static" } as never);
+    expect(calls[0]!.options).toEqual({ agent: false });
+  });
+
+  test("omits the third argument when neither headers nor webSocketOptions is set", () => {
+    const calls: Array<{ argc: number }> = [];
+    class StubWS extends EventTarget {
+      binaryType = "arraybuffer";
+      readyState = 0;
+      constructor(..._args: unknown[]) {
+        super();
+        calls.push({ argc: _args.length });
+      }
+      send(): void {}
+      close(): void {}
+    }
+    const hooks = createWebSocketProxy({
+      target: "ws://upstream.invalid/",
+      WebSocket: StubWS as unknown as typeof WebSocket,
+      connectTimeout: 0,
+    });
+    hooks.open?.({
+      id: "p-noopts",
+      request: new Request("http://localhost/"),
+      close() {},
+      send() {},
+    } as never);
+    // Only (url, protocols) — no third options object fabricated.
+    expect(calls).toEqual([{ argc: 2 }]);
   });
 
   test("closes peer with 1011 when WebSocket constructor rejects the target", async () => {

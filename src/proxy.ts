@@ -1,5 +1,11 @@
 import type { Hooks } from "./hooks.ts";
 import type { Peer } from "./peer.ts";
+// Per-runtime WebSocket client, resolved statically via the `crossws/websocket`
+// export conditions (node → `ws`, deno → unix `client`, bun/native → global).
+// Because it's a static conditional import, a bundle built for a specific
+// runtime tree-shakes the other runtimes' code (e.g. `ws`/`node:*` never enter
+// a Deno or browser bundle).
+import runtimeWebSocket from "crossws/websocket";
 
 // 1 MiB — generous enough for typical chatty clients while bounding memory
 // consumption of stalled-upstream peers.
@@ -16,6 +22,11 @@ const TOKEN_RE = /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/;
 export interface WebSocketProxyOptions {
   /**
    * Target WebSocket URL to proxy to (`ws://` or `wss://`).
+   *
+   * A `ws+unix://<socketPath>:<pathname>` target is also supported out of the
+   * box for proxying to a Unix-socket upstream on Node, Bun, and Deno (no custom
+   * {@link WebSocket} constructor required) — crossws dials it through the
+   * matching per-runtime `crossws/websocket` client. See the guide for details.
    *
    * Can be a static string/URL or a function that resolves the target dynamically
    * based on the incoming {@link Peer}. The resolver may be **async** (return a
@@ -112,6 +123,42 @@ export interface WebSocketProxyOptions {
    * ```
    */
   headers?: HeadersInit | ((peer: Peer) => HeadersInit | undefined | void);
+
+  /**
+   * Extra options merged into the upstream `WebSocket` constructor's third
+   * argument, as a static object or a per-peer resolver.
+   *
+   * This is the escape hatch for runtime- or client-specific dialing options
+   * that the WHATWG `WebSocket` signature doesn't cover — e.g. Deno's unstable
+   * `client` (to dial a Unix socket or use a custom `Deno.HttpClient`), or the
+   * `ws`/`undici` `createConnection`/`dispatcher`/`agent` options.
+   *
+   * Merged with {@link headers}: keys returned here are spread first, then the
+   * resolved `headers` option is applied on top (so a dedicated `headers`
+   * option wins over a `headers` key returned here).
+   *
+   * > [!NOTE]
+   * > Only honored by `WebSocket` constructors that accept a third options
+   * > argument. The WHATWG global browser constructor ignores it; Deno and Bun
+   * > extend the signature with their own options.
+   *
+   * @example Proxy to a Unix socket on Deno
+   * ```ts
+   * createWebSocketProxy({
+   *   // Deno's WebSocket rejects the `ws+unix:` scheme, so keep a plain
+   *   // `ws://` target and redirect the transport via the `client` option.
+   *   target: (peer) => `ws://localhost${new URL(peer.request.url).pathname}`,
+   *   webSocketOptions: () => ({
+   *     client: Deno.createHttpClient({
+   *       proxy: { transport: "unix", path: "/run/worker.sock" },
+   *     }),
+   *   }),
+   * });
+   * ```
+   */
+  webSocketOptions?:
+    | Record<string, unknown>
+    | ((peer: Peer) => Record<string, unknown> | undefined | void);
 }
 
 /**
@@ -133,7 +180,7 @@ export function createWebSocketProxy(
       ? { target }
       : target;
 
-  const WebSocketCtor = options.WebSocket ?? globalThis.WebSocket;
+  const WebSocketCtor = options.WebSocket ?? runtimeWebSocket;
   if (typeof WebSocketCtor !== "function") {
     throw new TypeError(
       "createWebSocketProxy requires a `WebSocket` constructor. Pass one via the `WebSocket` option, or use a runtime that provides a global `WebSocket` (Node.js >= 22, Bun, Deno, Cloudflare Workers, browsers).",
@@ -299,16 +346,17 @@ function _dialUpstream(
   let ws: WebSocket;
   try {
     const protocols = _resolveProtocols(peer, options.forwardProtocol);
-    const wsOptions = _resolveWsOptions(options.headers, peer);
-    // The WHATWG WebSocket constructor only takes (url, protocols);
-    // additional arguments are ignored. Custom clients like `ws` and
-    // `undici` accept a third options object where `headers` is
-    // honored — so always pass it when the user configured headers.
+    const wsOptions = _resolveWsOptions(options, peer);
+    // The runtime `#websocket` client (or a caller-supplied `WebSocket`) owns
+    // any scheme/argument specifics: it dials `ws+unix:` per runtime and, on
+    // Deno, relays options to the constructor's second argument. So a uniform
+    // `(url, protocols)` — plus a third options object when configured — works
+    // here. The WHATWG browser global simply ignores the extra argument.
     ws = wsOptions
       ? new (WebSocketCtor as unknown as new (
           url: URL,
           protocols: string[] | undefined,
-          opts: { headers: HeadersInit },
+          opts: Record<string, unknown>,
         ) => WebSocket)(url, protocols, wsOptions)
       : new WebSocketCtor(url, protocols);
     ws.binaryType = "arraybuffer";
@@ -404,14 +452,22 @@ function _isThenable(value: unknown): value is PromiseLike<unknown> {
   );
 }
 
+// Build the upstream constructor's third argument by merging the per-peer
+// `webSocketOptions` escape hatch with the dedicated `headers` option. Returns
+// `undefined` when neither is configured so the WHATWG-only `(url, protocols)`
+// call path is preserved. The `headers` option is applied last so it wins over
+// any `headers` key returned by `webSocketOptions`.
 function _resolveWsOptions(
-  headers: WebSocketProxyOptions["headers"],
+  options: WebSocketProxyOptions,
   peer: Peer,
-): { headers: HeadersInit } | undefined {
-  if (!headers) return;
-  const resolved = typeof headers === "function" ? headers(peer) : headers;
-  if (!resolved) return;
-  return { headers: resolved };
+): Record<string, unknown> | undefined {
+  const { headers, webSocketOptions } = options;
+  const extra = typeof webSocketOptions === "function" ? webSocketOptions(peer) : webSocketOptions;
+  const resolvedHeaders = typeof headers === "function" ? headers(peer) : headers;
+  if (!extra && !resolvedHeaders) return;
+  const merged: Record<string, unknown> = { ...extra };
+  if (resolvedHeaders) merged.headers = resolvedHeaders;
+  return merged;
 }
 
 /** @internal exported for tests */
