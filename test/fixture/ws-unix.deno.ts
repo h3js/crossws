@@ -11,19 +11,24 @@ try {
   // no stale socket to clean up
 }
 
-// Echo server bound to a unix socket.
+// Echo server bound to a unix socket. Echoes the payload plus the custom
+// upgrade header it received, so the fixture also asserts header forwarding.
 Deno.serve({ path: sock }, (req) => {
   if (req.headers.get("upgrade") === "websocket") {
+    const hdr = req.headers.get("x-custom") ?? "MISSING";
     const { socket, response } = Deno.upgradeWebSocket(req);
-    socket.onmessage = (e) => socket.send(`echo:${e.data}`);
+    socket.onmessage = (e) => socket.send(`echo:${e.data}:${hdr}`);
     return response;
   }
   return new Response("ok");
 });
 await new Promise((r) => setTimeout(r, 150));
 
-// Dial `ws+unix:` through the wrapper — no custom client wiring at the call site.
-const ws = new DenoWebSocket(`ws+unix://${sock}:/chat`);
+// Dial `ws+unix:` through the wrapper, forwarding a custom upgrade header via
+// the third options argument (the shape crossws's proxy uses).
+const ws = new (DenoWebSocket as unknown as {
+  new (url: string, protocols?: string | string[], options?: Record<string, unknown>): WebSocket;
+})(`ws+unix://${sock}:/chat`, undefined, { headers: { "x-custom": "HVAL" } });
 const result = await new Promise<string>((resolve) => {
   const to = setTimeout(() => resolve("TIMEOUT"), 3000);
   ws.onopen = () => ws.send("hello");
@@ -42,7 +47,7 @@ try {
 } catch {
   // best-effort cleanup
 }
-if (result === "echo:hello") {
+if (result === "echo:hello:HVAL") {
   console.log("WRAPPER_OK");
   Deno.exit(0);
 }

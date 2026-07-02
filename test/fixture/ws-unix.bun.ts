@@ -12,22 +12,31 @@ try {
   // no stale socket to clean up
 }
 
-// Echo server bound to a unix socket.
+// Echo server bound to a unix socket. Echoes the payload plus the custom
+// upgrade header it received, so the fixture also asserts header forwarding.
+// The header is stashed in a closure (single connection) to avoid depending on
+// Bun's `ServerWebSocket.data` typing, which isn't loaded under the repo tsconfig.
+let seenHeader = "MISSING";
 const server = Bun.serve({
   unix: sock,
   websocket: {
     message(ws, msg) {
-      ws.send(`echo:${msg}`);
+      ws.send(`echo:${msg}:${seenHeader}`);
     },
   },
   fetch(req, srv) {
+    seenHeader = req.headers.get("x-custom") ?? "MISSING";
     return srv.upgrade(req) ? undefined : new Response("ok");
   },
 });
 await new Promise((r) => setTimeout(r, 150));
 
-// Dial `ws+unix:` through the wrapper (Bun's global handles it natively).
-const ws = new BunWebSocket(`ws+unix://${sock}:/chat`);
+// Dial `ws+unix:` through the wrapper (Bun handles the scheme natively), while
+// forwarding a custom upgrade header via the third options argument — Bun only
+// reads options from its second argument, so the wrapper must relay it there.
+const ws = new (BunWebSocket as unknown as {
+  new (url: string, protocols?: string | string[], options?: Record<string, unknown>): WebSocket;
+})(`ws+unix://${sock}:/chat`, undefined, { headers: { "x-custom": "HVAL" } });
 const result = await new Promise<string>((resolve) => {
   const to = setTimeout(() => resolve("TIMEOUT"), 3000);
   ws.onopen = () => ws.send("hello");
@@ -47,7 +56,7 @@ try {
 } catch {
   // best-effort cleanup
 }
-if (result === "echo:hello") {
+if (result === "echo:hello:HVAL") {
   console.log("WRAPPER_OK");
   process.exit(0);
 }
