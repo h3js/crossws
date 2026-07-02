@@ -3,29 +3,36 @@
 // Deno's global `WebSocket` dials `ws:`/`wss:` out of the box but rejects the
 // `ws+unix://<socketPath>:<pathname>` scheme. This wrapper adds transparent
 // Unix-socket support: such URLs are rewritten to a plain `ws://` target and the
-// transport is routed through `Deno.createHttpClient`'s unstable unix `client`
-// (passed via Deno's second-argument options object). All other URLs — and the
-// subprotocols argument — pass through unchanged.
+// transport is routed through `Deno.createHttpClient`'s unstable unix `client`.
+//
+// Deno takes its dialing options (`client`, `protocols`, …) as the constructor's
+// *second* argument, unlike the WHATWG/`ws` third. So this wrapper also accepts a
+// third options object (e.g. a custom `client` from the proxy) and relays it into
+// Deno's second-argument form — plain `ws:`/`wss:` calls with no options keep the
+// native positional signature.
 
 const _WebSocket = globalThis.WebSocket;
 
 class DenoWebSocket extends _WebSocket {
-  constructor(url: string | URL, protocols?: string | string[]) {
+  constructor(url: string | URL, protocols?: string | string[], options?: Record<string, unknown>) {
     const href = typeof url === "string" ? url : url.href;
-    if (!href.startsWith("ws+unix:")) {
+    const isUnix = href.startsWith("ws+unix:");
+    if (!isUnix && !options) {
       super(url, protocols);
       return;
     }
-    const { socketPath, path } = _parseUnixTarget(href);
-    // `transport: "unix"` is an unstable option — run Deno with `--unstable-net`.
-    const client = Deno.createHttpClient({
-      proxy: { transport: "unix", path: socketPath },
-    } as unknown as Deno.CreateHttpClientOptions);
-    // Deno's `WebSocket` takes its options (including `client` and `protocols`)
-    // as the second argument, not the WHATWG/`ws` third.
-    const opts: Record<string, unknown> = { client };
+    const opts: Record<string, unknown> = { ...options };
     if (protocols !== undefined) opts.protocols = protocols;
-    super(`ws://localhost${path}`, opts as unknown as string[]);
+    if (isUnix) {
+      const { socketPath, path } = _parseUnixTarget(href);
+      // `transport: "unix"` is an unstable option — run Deno with `--unstable-net`.
+      opts.client ??= Deno.createHttpClient({
+        proxy: { transport: "unix", path: socketPath },
+      } as unknown as Deno.CreateHttpClientOptions);
+      super(`ws://localhost${path}`, opts as unknown as string[]);
+      return;
+    }
+    super(url, opts as unknown as string[]);
   }
 }
 

@@ -3,20 +3,10 @@
   "version": "0.4.7",
   "description": "Cross-platform WebSocket Servers for Node.js, Deno, Bun and Cloudflare Workers",
   "homepage": "https://crossws.h3.dev",
-  "license": "MIT",
   "repository": "h3js/crossws",
-  "files": [
-    "dist",
-    "adapters",
-    "websocket",
-    "server",
-    "*.d.ts"
-  ],
-  "type": "module",
+  "license": "MIT",
   "sideEffects": false,
-  "main": "./dist/index.mjs",
-  "module": "./dist/index.mjs",
-  "types": "./dist/index.d.mts",
+  "type": "module",
   "exports": {
     ".": "./dist/index.mjs",
     "./sync": "./dist/sync.mjs",
@@ -51,11 +41,22 @@
       "default": "./dist/websocket/native.mjs"
     }
   },
+  "main": "./dist/index.mjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "files": [
+    "dist",
+    "adapters",
+    "websocket",
+    "server",
+    "*.d.ts"
+  ],
   "scripts": {
+    "prepare": "obuild --stub",
     "build": "obuild",
     "dev": "vitest",
-    "lint": "oxlint . && oxfmt --check src test",
     "fmt": "oxlint . --fix && oxfmt src test",
+    "lint": "oxlint . && oxfmt --check src test",
     "prepack": "pnpm run build",
     "play:bun": "bun --watch test/fixture/bun.ts",
     "play:cf": "wrangler dev --port 3001 -c test/fixture/wrangler.toml",
@@ -67,6 +68,9 @@
     "release": "pnpm test && pnpm build && changelogen --release && npm publish && git push --follow-tags",
     "test": "pnpm lint && pnpm typecheck && vitest run --coverage",
     "typecheck": "tsgo --noEmit --skipLibCheck"
+  },
+  "resolutions": {
+    "crossws": "workspace:*"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260629.1",
@@ -106,9 +110,6 @@
     "srvx": {
       "optional": true
     }
-  },
-  "resolutions": {
-    "crossws": "workspace:*"
   },
   "packageManager": "pnpm@11.7.0"
 }

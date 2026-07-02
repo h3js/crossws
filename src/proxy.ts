@@ -1,5 +1,11 @@
 import type { Hooks } from "./hooks.ts";
 import type { Peer } from "./peer.ts";
+// Per-runtime WebSocket client, resolved statically via the `crossws/websocket`
+// export conditions (node → `ws`, deno → unix `client`, bun/native → global).
+// Because it's a static conditional import, a bundle built for a specific
+// runtime tree-shakes the other runtimes' code (e.g. `ws`/`node:*` never enter
+// a Deno or browser bundle).
+import runtimeWebSocket from "crossws/websocket";
 
 // 1 MiB — generous enough for typical chatty clients while bounding memory
 // consumption of stalled-upstream peers.
@@ -174,7 +180,7 @@ export function createWebSocketProxy(
       ? { target }
       : target;
 
-  const WebSocketCtor = options.WebSocket ?? globalThis.WebSocket;
+  const WebSocketCtor = options.WebSocket ?? runtimeWebSocket;
   if (typeof WebSocketCtor !== "function") {
     throw new TypeError(
       "createWebSocketProxy requires a `WebSocket` constructor. Pass one via the `WebSocket` option, or use a runtime that provides a global `WebSocket` (Node.js >= 22, Bun, Deno, Cloudflare Workers, browsers).",
@@ -337,83 +343,22 @@ function _dialUpstream(
   // resolving — its state is gone from the map, so don't dial a stale upstream.
   if (upstreams.get(peer.id) !== state) return;
 
-  // Decide *how* to dial: for a plain `ws:`/`wss:` target this is the passed
-  // constructor and URL as-is; for a `ws+unix:` target it selects a per-runtime
-  // strategy, which on Node requires a lazy `import("ws")` and so is async.
-  let plan: _DialPlan | Promise<_DialPlan>;
-  try {
-    plan = _planDial(url, options, WebSocketCtor);
-  } catch {
-    // Unsupported unix runtime, or a synchronous strategy failure.
-    _cleanupState(upstreams, peer.id, state);
-    _safeClose(peer, 1011, "Upstream setup failed");
-    return;
-  }
-
-  if (plan instanceof Promise) {
-    plan.then(
-      (resolved) => _constructUpstream(upstreams, peer, state, resolved, options),
-      () => {
-        if (upstreams.get(peer.id) !== state) return;
-        _cleanupState(upstreams, peer.id, state);
-        _safeClose(peer, 1011, "Upstream setup failed");
-      },
-    );
-  } else {
-    _constructUpstream(upstreams, peer, state, plan, options);
-  }
-}
-
-// How to dial the upstream: which `WebSocket` constructor and URL to dial.
-interface _DialPlan {
-  ctor: typeof WebSocket;
-  url: URL;
-  // Deno's global `WebSocket` takes its options (including `client` and
-  // `protocols`) as the *second* argument, not the WHATWG/`ws`/`undici` third.
-  // When set, the subprotocols and resolved options are passed as arg two.
-  optionsAsSecondArg?: boolean;
-}
-
-// Construct the upstream socket from a resolved dial plan and wire its
-// lifecycle back to the peer.
-function _constructUpstream(
-  upstreams: Map<string, UpstreamState>,
-  peer: Peer,
-  state: UpstreamState,
-  plan: _DialPlan,
-  options: WebSocketProxyOptions,
-): void {
-  // The peer may have closed while an async plan (e.g. Node's `import("ws")`)
-  // was resolving — don't attach a stale upstream.
-  if (upstreams.get(peer.id) !== state) return;
-
   let ws: WebSocket;
   try {
     const protocols = _resolveProtocols(peer, options.forwardProtocol);
     const wsOptions = _resolveWsOptions(options, peer);
-    if (!wsOptions) {
-      // No extra options — the WHATWG-compatible `(url, protocols)` shape works
-      // on every runtime (including Deno's positional second argument).
-      ws = new plan.ctor(plan.url, protocols);
-    } else if (plan.optionsAsSecondArg) {
-      // Deno: `new WebSocket(url, { client, protocols, ... })`. Subprotocols
-      // travel inside the options object rather than as a positional argument.
-      const opts: Record<string, unknown> = { ...wsOptions };
-      if (protocols) opts.protocols = protocols;
-      ws = new (plan.ctor as unknown as new (url: URL, opts: Record<string, unknown>) => WebSocket)(
-        plan.url,
-        opts,
-      );
-    } else {
-      // `ws`/`undici` accept a third options object where `headers`,
-      // `webSocketOptions`, etc. are honored. The WHATWG browser global ignores
-      // the extra argument, which is documented for those options.
-      ws = new (plan.ctor as unknown as new (
-        url: URL,
-        protocols: string[] | undefined,
-        opts: Record<string, unknown>,
-      ) => WebSocket)(plan.url, protocols, wsOptions);
-    }
+    // The runtime `#websocket` client (or a caller-supplied `WebSocket`) owns
+    // any scheme/argument specifics: it dials `ws+unix:` per runtime and, on
+    // Deno, relays options to the constructor's second argument. So a uniform
+    // `(url, protocols)` — plus a third options object when configured — works
+    // here. The WHATWG browser global simply ignores the extra argument.
+    ws = wsOptions
+      ? new (WebSocketCtor as unknown as new (
+          url: URL,
+          protocols: string[] | undefined,
+          opts: Record<string, unknown>,
+        ) => WebSocket)(url, protocols, wsOptions)
+      : new WebSocketCtor(url, protocols);
     ws.binaryType = "arraybuffer";
   } catch {
     // Bad target URL, disallowed scheme, invalid subprotocol token,
@@ -523,60 +468,6 @@ function _resolveWsOptions(
   const merged: Record<string, unknown> = { ...extra };
   if (resolvedHeaders) merged.headers = resolvedHeaders;
   return merged;
-}
-
-// Choose how to dial `url`. Plain `ws:`/`wss:` targets (and any target with an
-// explicit `WebSocket` constructor) dial as-is. A `ws+unix:` target is delegated
-// to the matching per-runtime `crossws/websocket` client, which knows how to
-// reach a Unix socket on its runtime, so it works out of the box:
-//
-// - Bun: its global `WebSocket` dials `ws+unix:` natively — pass through.
-// - Node: the `crossws/websocket` Node client routes `ws+unix:` through `ws`.
-// - Deno: the `crossws/websocket` Deno client routes it through a unix
-//   `Deno.createHttpClient` transport.
-//
-// The wrappers are imported lazily so their `ws`/Deno-specific code never enters
-// the eager graph of the runtime-agnostic `crossws` entry (which browsers and
-// Workers also load). Returns a promise only for those lazy imports; the plain
-// and Bun paths resolve synchronously.
-function _planDial(
-  url: URL,
-  options: WebSocketProxyOptions,
-  WebSocketCtor: typeof WebSocket,
-): _DialPlan | Promise<_DialPlan> {
-  const runtime = globalThis as {
-    Bun?: unknown;
-    Deno?: unknown;
-    process?: { versions?: { node?: string } };
-  };
-
-  // Deno's global `WebSocket` takes options as its second argument, unlike the
-  // WHATWG/`ws`/`undici` third — flag it so `webSocketOptions` (e.g. a unix
-  // `client`) reaches Deno. A custom `WebSocket` is assumed to follow the
-  // WHATWG/`ws` third-argument shape.
-  const optionsAsSecondArg = !options.WebSocket && !!runtime.Deno;
-
-  // A caller-supplied constructor is used verbatim — the user opted into
-  // whatever scheme handling it provides (e.g. `ws`'s `ws+unix:` support).
-  if (url.protocol !== "ws+unix:" || options.WebSocket) {
-    return { ctor: WebSocketCtor, url, optionsAsSecondArg };
-  }
-
-  if (runtime.Bun) {
-    return { ctor: WebSocketCtor, url };
-  }
-
-  if (runtime.Deno) {
-    return import("./websocket/deno.ts").then((mod) => ({ ctor: mod.default, url }));
-  }
-
-  if (runtime.process?.versions?.node) {
-    return import("./websocket/node.ts").then((mod) => ({ ctor: mod.default, url }));
-  }
-
-  throw new Error(
-    `crossws proxy cannot dial a \`ws+unix:\` target on this runtime — pass a \`WebSocket\` option that supports the scheme.`,
-  );
 }
 
 /** @internal exported for tests */

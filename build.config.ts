@@ -28,6 +28,12 @@ export default defineBuildConfig({
           "@deno/types",
           "uWebSockets.js",
           "cloudflare:workers",
+          // Keep the self-referential `crossws/websocket` import as a bare
+          // specifier in the output so the consumer's runtime/bundler resolves
+          // it via the package `exports` conditions — letting a per-runtime
+          // bundle tree-shake the other runtimes' clients (e.g. `ws` out of
+          // a Deno or browser build).
+          "crossws/websocket",
         ],
       },
     },
