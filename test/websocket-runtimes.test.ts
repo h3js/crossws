@@ -42,20 +42,19 @@ describe("crossws/websocket headers (node)", () => {
     await new Promise((r) => wss.on("listening", r));
     const { port } = wss.address() as AddressInfo;
 
+    const ws = new (NodeWebSocket as unknown as {
+      new (
+        url: string,
+        protocols?: string | string[],
+        options?: Record<string, unknown>,
+      ): WebSocket;
+    })(`ws://localhost:${port}/`, ["chat"], { headers: { "x-custom": "HVAL" } });
     try {
       const result = await new Promise<string>((resolve) => {
-        const ws = new (NodeWebSocket as unknown as {
-          new (
-            url: string,
-            protocols?: string | string[],
-            options?: Record<string, unknown>,
-          ): WebSocket;
-        })(`ws://localhost:${port}/`, ["chat"], { headers: { "x-custom": "HVAL" } });
         const to = setTimeout(() => resolve("TIMEOUT"), 3000);
         ws.onmessage = (e) => {
           clearTimeout(to);
           resolve(String(e.data));
-          ws.close();
         };
         ws.onerror = () => {
           clearTimeout(to);
@@ -64,6 +63,7 @@ describe("crossws/websocket headers (node)", () => {
       });
       expect(result).toBe("HVAL|chat");
     } finally {
+      ws.close();
       wss.close();
     }
   }, 10_000);
