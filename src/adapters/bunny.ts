@@ -78,6 +78,16 @@ const bunnyAdapter: Adapter<BunnyAdapter, BunnyOptions> = (options = {}) => {
 
       const remoteAddress = request.headers.get("x-real-ip") || undefined;
 
+      // Bunny evicts the isolate once the handler returns unless it is told
+      // that work is still in flight. A WebSocket outlives the handler, so hand
+      // the runtime a promise that settles when the socket ends (verified
+      // empirically: without this, sockets are cut with 1006 after ~10s).
+      // Both `close` and `error` must settle it or a failed socket would pin
+      // the isolate forever.
+      let settleClosed!: () => void;
+      const closed = new Promise<void>((resolve) => (settleClosed = resolve));
+      (globalThis as any).Bunny?.v1?.waitUntil?.(closed);
+
       const peers = getPeers(globalPeers, namespace);
       const peer = new BunnyPeer({
         ws: socket,
@@ -100,6 +110,7 @@ const bunnyAdapter: Adapter<BunnyAdapter, BunnyOptions> = (options = {}) => {
 
       socket.addEventListener("close", (event: any) => {
         peers.delete(peer);
+        settleClosed();
         hooks.callHook("close", peer, {
           code: event.code,
           reason: event.reason,
@@ -108,6 +119,7 @@ const bunnyAdapter: Adapter<BunnyAdapter, BunnyOptions> = (options = {}) => {
 
       socket.addEventListener("error", (error) => {
         peers.delete(peer);
+        settleClosed();
         hooks.callHook("error", peer, new WSError(error));
       });
 
