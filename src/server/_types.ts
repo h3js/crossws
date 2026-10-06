@@ -6,6 +6,7 @@ import type { BunOptions, CloudflareOptions, DenoOptions } from "../adapters/_op
 import type { BunnyOptions } from "../adapters/bunny";
 import type { NodeOptions } from "../adapters/node";
 import type { SSEOptions } from "../adapters/sse";
+import type { HeadersInit } from "../../types/web.ts";
 
 export type WSOptions = Partial<Hooks> & {
   /**

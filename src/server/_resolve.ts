@@ -4,6 +4,7 @@ import { getWebSocketHooks } from "../hooks";
 import { warnOnce } from "../utils";
 import type { Hooks } from "../hooks";
 import type { WSOptions } from "./_types";
+import type { HeadersInit } from "../../types/web.ts";
 
 const HOOK_NAMES = [
   "upgrade",

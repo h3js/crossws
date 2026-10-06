@@ -6,6 +6,7 @@ import type { Peer } from "./peer.ts";
 // runtime tree-shakes the other runtimes' code (e.g. `ws`/`node:*` never enter
 // a Deno or browser bundle).
 import runtimeWebSocket from "crossws/websocket";
+import type { HeadersInit } from "../types/web.ts";
 
 // 1 MiB — generous enough for typical chatty clients while bounding memory
 // consumption of stalled-upstream peers.

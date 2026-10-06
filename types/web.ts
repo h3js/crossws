@@ -1,6 +1,30 @@
 // Mirror from @types/web to bypass runtime type pollution
 /// <reference types="@types/web" />
 
+// Local aliases for DOM-only globals so that consumers do not need `lib: ["dom"]`
+
+/**
+ * Headers accepted by the runtime `Headers` constructor (`HeadersInit`).
+ */
+export type HeadersInit = NonNullable<ConstructorParameters<typeof globalThis.Headers>[0]>;
+
+type DOMHighResTimeStamp = number;
+
+export type BinaryType = "blob" | "arraybuffer";
+
+type MessageEventSource = unknown;
+
+type EventListenerOrEventListenerObject =
+  | ((evt: Event) => void)
+  | { handleEvent(object: Event): void };
+
+interface WebSocketEventMap {
+  close: CloseEvent;
+  error: Event;
+  message: MessageEvent;
+  open: Event;
+}
+
 /**
  * A CloseEvent is sent to clients using WebSockets when the connection is closed. This is delivered to the listener indicated by the WebSocket object's onclose attribute.
  *

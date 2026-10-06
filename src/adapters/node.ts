@@ -12,6 +12,7 @@ import type { Duplex } from "node:stream";
 import { WebSocketServer as _WebSocketServer } from "ws";
 import type { ServerOptions, WebSocketServer, WebSocket as WebSocketT } from "../../types/ws";
 import { StubRequest } from "../_request.ts";
+import type { HeadersInit } from "../../types/web.ts";
 
 // --- types ---
 

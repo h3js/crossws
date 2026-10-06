@@ -2,6 +2,7 @@ import type { AdapterOptions } from "./adapter.ts";
 import type { WSError } from "./error.ts";
 import type { Peer, PeerContext } from "./peer.ts";
 import type { Message } from "./message.ts";
+import type { HeadersInit } from "../types/web.ts";
 
 export class AdapterHookable {
   options: AdapterOptions;

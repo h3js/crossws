@@ -9,7 +9,7 @@ export interface WebSocketSSEOptions {
   bidir?: boolean;
   /** enabled by default */
   stream?: boolean;
-  headers?: HeadersInit;
+  headers?: web.HeadersInit;
 }
 
 const defaultOptions: WebSocketSSEOptions = Object.freeze({
@@ -32,7 +32,7 @@ export class WebSocketSSE extends _EventTarget implements web.WebSocket {
   onopen: ((this: web.WebSocket, ev: web.Event) => any) | null = null;
   onmessage: ((this: web.WebSocket, ev: web.MessageEvent<any>) => any) | null = null;
 
-  binaryType: BinaryType = "blob";
+  binaryType: web.BinaryType = "blob";
   readyState: number = WebSocketSSE.CONNECTING;
 
   readonly url: string;
