@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.4.15
+
+[compare changes](https://github.com/h3js/crossws/compare/v0.4.14...v0.4.15)
+
+### 🩹 Fixes
+
+- **types:** Don't import bun and cloudflare types from the root entry ([#209](https://github.com/h3js/crossws/pull/209))
+- **types:** Don't depend on DOM-only globals in public types ([#209](https://github.com/h3js/crossws/pull/209))
+
+### 🏡 Chore
+
+- Remove prepare script ([baa9f9e](https://github.com/h3js/crossws/commit/baa9f9e))
+- Update dependencies ([ffde82c](https://github.com/h3js/crossws/commit/ffde82c))
+
+### 🤖 CI
+
+- Build before typecheck ([6266737](https://github.com/h3js/crossws/commit/6266737))
+
+### ❤️ Contributors
+
+- Pooya Parsa ([@pi0](https://github.com/pi0))
+
 ## v0.4.14
 
 [compare changes](https://github.com/h3js/crossws/compare/v0.4.13...v0.4.14)
