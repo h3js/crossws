@@ -73,6 +73,8 @@ const ws = crossws({
 
 Or decide per connection by returning `perMessageDeflate` from the [`upgrade` hook](/guide/hooks#compression) (or the [`createWebSocketProxy`](/guide/proxy#compression) option). This works without access to the adapter options — e.g. when a framework creates the adapter for you. A per-connection value overrides `serverOptions` for that handshake only: an options object replaces the server's tuning, `true` enables the extension (keeping the server's tuning, if any), and `false` refuses it even when it is enabled server-wide. Everything else (`verifyClient`, `maxPayload`, …) still comes from the one server.
 
+`concurrencyLimit` (concurrent zlib operations) is process-wide in `ws`, so it can only be set through `serverOptions.perMessageDeflate`, not per connection.
+
 ## Delegating to an existing Node.js upgrade handler
 
 If you already have a Node.js WebSocket library that exposes a raw `(req, socket, head)` upgrade handler (e.g. [`ws`](https://github.com/websockets/ws), `socket.io`, `express-ws`), you can route to it through crossws using `fromNodeUpgradeHandler`. This lets you keep crossws's upgrade-time request handling while delegating the WebSocket lifecycle to your existing library.

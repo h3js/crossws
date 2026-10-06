@@ -278,7 +278,15 @@ function handleUpgradeWithDeflate(
   const serverOptions = wss.options;
   const original = serverOptions.perMessageDeflate;
   // `true` enables the extension with the server's own tuning, if any.
-  const override = perMessageDeflate === true ? original || {} : perMessageDeflate;
+  let override: ServerOptions["perMessageDeflate"] =
+    perMessageDeflate === true ? original || {} : perMessageDeflate;
+  // `ws` sizes its process-wide zlib limiter from whichever deflate instance is
+  // created first, so keep the server's `concurrencyLimit` on per-connection
+  // options too; otherwise a hook-configured handshake could fix it at the default.
+  const concurrencyLimit = typeof original === "object" ? original.concurrencyLimit : undefined;
+  if (typeof override === "object" && override !== original && concurrencyLimit !== undefined) {
+    override = { ...override, concurrencyLimit };
+  }
   if (override === undefined || override === original) {
     wss.handleUpgrade(req, socket, head, cb);
     return;

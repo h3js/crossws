@@ -403,4 +403,32 @@ describe("node (per-connection perMessageDeflate)", () => {
     await adapter.close();
     srv.close();
   });
+
+  test("per-connection options keep the server's process-wide `concurrencyLimit`", async () => {
+    // `verifyClient` runs synchronously inside the handshake, while the
+    // per-connection override is applied.
+    let seen: unknown;
+    const wss = new WebSocketServer({
+      noServer: true,
+      perMessageDeflate: { concurrencyLimit: 4 },
+      verifyClient: () => ((seen = wss.options.perMessageDeflate), true),
+    });
+    const adapter = nodeAdapter({
+      wss: wss as any,
+      hooks: defineHooks({ upgrade: () => ({ perMessageDeflate: { threshold: 0 } }) }),
+    });
+    const srv = createServer((_req, res) => res.end("ok"));
+    srv.on("upgrade", adapter.handleUpgrade);
+    const port = await getRandomPort("localhost");
+    await new Promise<void>((resolve) => srv.listen(port, resolve));
+
+    const client = new WebSocket(`ws://localhost:${port}/`);
+    await new Promise((resolve) => client.on("open", resolve));
+    expect(seen).toEqual({ threshold: 0, concurrencyLimit: 4 });
+    expect(wss.options.perMessageDeflate).toEqual({ concurrencyLimit: 4 });
+
+    client.close();
+    await adapter.close();
+    srv.close();
+  });
 });

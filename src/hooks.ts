@@ -314,8 +314,8 @@ export interface PerMessageDeflateOptions {
   zlibInflateOptions?: { chunkSize?: number; windowBits?: number };
   /** Payloads smaller than this many bytes are sent uncompressed (`ws` default: `1024`). */
   threshold?: number;
-  /** Max concurrent `zlib` calls (`ws` default: `10`). */
-  concurrencyLimit?: number;
+  // `concurrencyLimit` is intentionally absent: `ws` applies it process-wide
+  // (from the first deflate instance), so it belongs to `serverOptions`.
 }
 
 export type UpgradeError = Response | { readonly response: Response };
