@@ -109,14 +109,14 @@ export interface WebSocketProxyOptions {
    * client↔proxy leg (`true`, or `ws`-style tuning options).
    *
    * The proxy terminates the WebSocket, so compression is negotiated on each
-   * leg independently: frames are decompressed on arrival and recompressed as
-   * needed, and this setting never affects the proxy↔upstream leg. That makes
-   * it a good fit for a nearby (e.g. loopback) upstream serving a remote
-   * client, where only the client leg benefits from compression.
+   * leg independently and this setting does not apply to the proxy↔upstream
+   * leg. That leg is negotiated by the upstream client, which offers
+   * compression by default; pass `webSocketOptions: { perMessageDeflate: false }`
+   * to keep e.g. a loopback upstream leg uncompressed.
    *
-   * Each compressed connection keeps its own `zlib` state (hundreds of KB with
-   * context takeover); set `serverNoContextTakeover: true` to trade some ratio
-   * for flat per-connection memory, and prefer a low `zlibDeflateOptions.level`
+   * Each compressed connection keeps its own `zlib` streams (a few hundred KB
+   * at the defaults) for its lifetime; shrink them with `serverMaxWindowBits` /
+   * `zlibDeflateOptions.memLevel`, and prefer a low `zlibDeflateOptions.level`
    * (1–3) on hot paths.
    *
    * > [!NOTE]
@@ -130,6 +130,7 @@ export interface WebSocketProxyOptions {
    *     zlibDeflateOptions: { level: 3 },
    *     threshold: 1024,
    *   },
+   *   webSocketOptions: { perMessageDeflate: false },
    * });
    * ```
    *

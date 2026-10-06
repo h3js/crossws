@@ -71,7 +71,7 @@ const ws = crossws({
 });
 ```
 
-Or decide per connection by returning `perMessageDeflate` from the [`upgrade` hook](/guide/hooks#compression) (or the [`createWebSocketProxy`](/guide/proxy#compression) option). This works without access to the adapter options — e.g. when a framework creates the adapter for you. A per-connection value overrides `serverOptions`; `false` refuses the extension even when it is enabled server-wide.
+Or decide per connection by returning `perMessageDeflate` from the [`upgrade` hook](/guide/hooks#compression) (or the [`createWebSocketProxy`](/guide/proxy#compression) option). This works without access to the adapter options — e.g. when a framework creates the adapter for you. A per-connection value overrides `serverOptions` for that handshake only: an options object replaces the server's tuning, `true` enables the extension (keeping the server's tuning, if any), and `false` refuses it even when it is enabled server-wide. Everything else (`verifyClient`, `maxPayload`, …) still comes from the one server.
 
 ## Delegating to an existing Node.js upgrade handler
 

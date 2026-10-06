@@ -294,11 +294,11 @@ export type MaybePromise<T> = T | Promise<T>;
  * which applies it on Node.js.
  */
 export interface PerMessageDeflateOptions {
-  /** Don't reuse the server's compression context across messages. Lowers the ratio but keeps per-connection memory flat. */
+  /** Reset the server's compression context after each message (lower ratio). The `zlib` streams stay allocated. */
   serverNoContextTakeover?: boolean;
   /** Ask the client not to reuse its compression context across messages. */
   clientNoContextTakeover?: boolean;
-  /** LZ77 window size (8–15) the server compresses with. */
+  /** LZ77 window size (8–15) the server compresses with. Smaller windows use less memory. */
   serverMaxWindowBits?: number;
   /** LZ77 window size (8–15) the client is asked to compress with. */
   clientMaxWindowBits?: number;

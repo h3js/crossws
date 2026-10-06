@@ -65,45 +65,13 @@ const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
   const globalPeers = new Map<string, Set<NodePeer>>();
   const baseUtils = adapterUtils(globalPeers, options);
 
-  const createWss = (overrides?: ServerOptions): WebSocketServer =>
-    new _WebSocketServer({
+  const wss: WebSocketServer =
+    options.wss ||
+    (new _WebSocketServer({
       noServer: true,
       handleProtocols: () => false,
       ...(options.serverOptions as any),
-      ...overrides,
-    }) as WebSocketServer;
-
-  const wss: WebSocketServer = options.wss || createWss();
-
-  // `ws` negotiates `permessage-deflate` from server-wide options, so a
-  // per-connection override (`perMessageDeflate` returned by the `upgrade` hook)
-  // is served by a sibling server configured accordingly, which then hands the
-  // socket to `wss` like any other connection. Siblings are created lazily, one
-  // per distinct setting (keyed by value so a hook returning a fresh object
-  // literal per upgrade doesn't create a server per connection).
-  const deflateServers = new Map<string, WebSocketServer>();
-  const getServer = (perMessageDeflate?: boolean | PerMessageDeflateOptions): WebSocketServer => {
-    if (
-      perMessageDeflate === undefined ||
-      (typeof perMessageDeflate === "boolean" &&
-        perMessageDeflate === !!wss.options.perMessageDeflate)
-    ) {
-      return wss;
-    }
-    const key = JSON.stringify(perMessageDeflate);
-    let server = deflateServers.get(key);
-    if (!server) {
-      server = createWss({
-        noServer: true,
-        port: undefined,
-        server: undefined,
-        perMessageDeflate,
-      });
-      server.on("headers", onHeaders);
-      deflateServers.set(key, server);
-    }
-    return server;
-  };
+    }) as WebSocketServer);
 
   // Sockets crossws opened through this adapter. We track them ourselves rather
   // than read `wss.clients` so the idle sweep and `closeAll` (a) never touch
@@ -227,15 +195,14 @@ const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
     wss.on("close", stopSweep);
   }
 
-  function onHeaders(outgoingHeaders: string[], req: IncomingMessage) {
+  wss.on("headers", (outgoingHeaders, req) => {
     const upgradeHeaders = (req as AugmentedReq)._upgradeHeaders;
     if (upgradeHeaders) {
       for (const [key, value] of new Headers(upgradeHeaders)) {
         outgoingHeaders.push(`${key}: ${value}`);
       }
     }
-  }
-  wss.on("headers", onHeaders);
+  });
 
   return {
     ...baseUtils,
@@ -272,7 +239,7 @@ const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
       (nodeReq as AugmentedReq)._upgradeHeaders = upgradeHeaders;
       (nodeReq as AugmentedReq)._context = context;
       (nodeReq as AugmentedReq)._namespace = namespace;
-      getServer(perMessageDeflate).handleUpgrade(nodeReq, socket, head, (ws) => {
+      handleUpgradeWithDeflate(wss, perMessageDeflate, nodeReq, socket, head, (ws) => {
         wss.emit("connection", ws, nodeReq);
       });
     },
@@ -292,6 +259,37 @@ export default nodeAdapter;
 
 export { fromNodeUpgradeHandler } from "../node-handler.ts";
 export type { NodeUpgradeHandler } from "../node-handler.ts";
+
+// `ws` negotiates `permessage-deflate` from its server-wide `options`, so a
+// per-connection setting (`perMessageDeflate` returned by the `upgrade` hook) is
+// applied by overriding that option for the duration of `handleUpgrade`. `ws`
+// reads it only synchronously there — the negotiated extension is built before
+// `verifyClient`/`completeUpgrade` run — so the override never leaks into another
+// handshake, while everything else (`verifyClient`, `maxPayload`, `clients`,
+// `headers` listeners, close state) stays that of the one shared server.
+function handleUpgradeWithDeflate(
+  wss: WebSocketServer,
+  perMessageDeflate: boolean | PerMessageDeflateOptions | undefined,
+  req: IncomingMessage,
+  socket: Duplex,
+  head: Buffer,
+  cb: (ws: WebSocketT) => void,
+): void {
+  const serverOptions = wss.options;
+  const original = serverOptions.perMessageDeflate;
+  // `true` enables the extension with the server's own tuning, if any.
+  const override = perMessageDeflate === true ? original || {} : perMessageDeflate;
+  if (override === undefined || override === original) {
+    wss.handleUpgrade(req, socket, head, cb);
+    return;
+  }
+  serverOptions.perMessageDeflate = override;
+  try {
+    wss.handleUpgrade(req, socket, head, cb);
+  } finally {
+    serverOptions.perMessageDeflate = original;
+  }
+}
 
 // --- peer ---
 

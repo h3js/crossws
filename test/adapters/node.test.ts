@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { createServer, Server } from "node:http";
-import { WebSocket } from "ws";
+import { WebSocket, WebSocketServer } from "ws";
 import { getRandomPort, waitForPort } from "get-port-please";
 import nodeAdapter from "../../src/adapters/node";
 import { defineHooks } from "../../src/index";
@@ -225,8 +225,9 @@ describe("node (publish object frame type)", () => {
 });
 
 // `permessage-deflate` is negotiated from `ws`'s server-wide options, so a
-// per-connection `perMessageDeflate` returned by the `upgrade` hook is served by
-// a sibling server. The `ws` client offers the extension by default.
+// per-connection `perMessageDeflate` returned by the `upgrade` hook overrides
+// that option for the handshake only. The `ws` client offers the extension by
+// default.
 describe("node (per-connection perMessageDeflate)", () => {
   let server: Server;
   let url: string;
@@ -241,7 +242,6 @@ describe("node (per-connection perMessageDeflate)", () => {
           const headers = { "x-mode": mode || "default" };
           if (mode === "on") return { headers, perMessageDeflate: true };
           if (mode === "tuned") {
-            // A fresh object per upgrade, to exercise the value-keyed cache.
             return { headers, perMessageDeflate: { serverNoContextTakeover: true, threshold: 0 } };
           }
           if (mode === "off") return { headers, perMessageDeflate: false };
@@ -306,8 +306,11 @@ describe("node (per-connection perMessageDeflate)", () => {
 
   test("negotiated and applied to sends when the hook returns `true`", async () => {
     const { client, headers } = await open("deflate=on");
+    // The override is scoped to its own handshake.
+    const { client: plain } = await open("deflate=");
+    expect(plain.extensions).toBe("");
+    plain.close();
     expect(client.extensions).toContain("permessage-deflate");
-    // Upgrade headers still flow through the sibling server.
     expect(headers["x-mode"]).toBe("on");
     expect(await wireBytes(client, "big")).toBeLessThan(1024);
     expect(await wireBytes(client, "big-uncompressed")).toBeGreaterThan(big.length);
@@ -358,6 +361,45 @@ describe("node (per-connection perMessageDeflate)", () => {
     await new Promise((resolve) => client.on("open", resolve));
     expect(client.extensions).toBe("");
     client.close();
+    await adapter.close();
+    srv.close();
+  });
+
+  test("keeps a user-supplied `wss`'s options, clients and lifecycle", async () => {
+    let verified = 0;
+    const wss = new WebSocketServer({
+      noServer: true,
+      maxPayload: 16,
+      verifyClient: () => (verified++, true),
+    });
+    const adapter = nodeAdapter({
+      wss: wss as any,
+      hooks: defineHooks({ upgrade: () => ({ perMessageDeflate: true }) }),
+    });
+    const srv = createServer((_req, res) => res.end("ok"));
+    srv.on("upgrade", adapter.handleUpgrade);
+    const port = await getRandomPort("localhost");
+    await new Promise<void>((resolve) => srv.listen(port, resolve));
+
+    const client = new WebSocket(`ws://localhost:${port}/`);
+    await new Promise((resolve) => client.on("open", resolve));
+    expect(client.extensions).toContain("permessage-deflate");
+    expect(verified).toBe(1);
+    expect(wss.clients.size).toBe(1);
+    expect(wss.options.perMessageDeflate).toBe(false);
+
+    const closed = new Promise<number>((resolve) => client.on("close", resolve));
+    client.send("x".repeat(64)); // over `maxPayload`
+    expect(await closed).toBe(1009);
+
+    // A closed server refuses new handshakes, compressed or not.
+    wss.close();
+    const refused = new WebSocket(`ws://localhost:${port}/`);
+    const status = await new Promise<number>((resolve) =>
+      refused.on("unexpected-response", (_req, res) => resolve(res.statusCode!)),
+    );
+    expect(status).toBe(503);
+
     await adapter.close();
     srv.close();
   });

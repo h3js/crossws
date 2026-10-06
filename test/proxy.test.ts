@@ -853,10 +853,15 @@ describe("createWebSocketProxy (perMessageDeflate)", () => {
   let upstreamServer: Server;
   let proxyServer: Server;
   let proxyURL: string;
+  let adapters: { close: () => Promise<void> }[];
+  let upstreamOffer: string | null | undefined;
 
   beforeAll(async () => {
     const upstream = nodeAdapter({
       hooks: defineHooks({
+        upgrade(req) {
+          upstreamOffer = req.headers.get("sec-websocket-extensions");
+        },
         message(peer, message) {
           peer.send(message.text() === "big" ? big : `echo:${message.text()}`);
         },
@@ -871,8 +876,10 @@ describe("createWebSocketProxy (perMessageDeflate)", () => {
       hooks: createWebSocketProxy({
         target: `ws://localhost:${upstreamPort}/`,
         perMessageDeflate: { zlibDeflateOptions: { level: 3 } },
+        webSocketOptions: { perMessageDeflate: false },
       }),
     });
+    adapters = [upstream, proxy];
     proxyServer = createServer((_req, res) => res.end("ok"));
     proxyServer.on("upgrade", proxy.handleUpgrade);
     const proxyPort = await getRandomPort("localhost");
@@ -881,12 +888,13 @@ describe("createWebSocketProxy (perMessageDeflate)", () => {
     await waitForPort(proxyPort);
   });
 
-  afterAll(() => {
+  afterAll(async () => {
+    await Promise.all(adapters.map((adapter) => adapter.close()));
     upstreamServer.close();
     proxyServer.close();
   });
 
-  test("compresses the client leg", async () => {
+  test("compresses the client leg only", async () => {
     const client = new WsWebSocket(proxyURL);
     await new Promise((resolve) => client.on("open", resolve));
     expect(client.extensions).toContain("permessage-deflate");
@@ -894,6 +902,8 @@ describe("createWebSocketProxy (perMessageDeflate)", () => {
     const echo = new Promise((resolve) => client.once("message", (d) => resolve(`${d}`)));
     client.send("hi");
     expect(await echo).toBe("echo:hi");
+    // The upstream leg is dialed without offering the extension.
+    expect(upstreamOffer).toBeNull();
 
     const socket = (client as unknown as { _socket: { bytesRead: number } })._socket;
     const before = socket.bytesRead;
