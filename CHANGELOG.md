@@ -1,5 +1,19 @@
 # Changelog
 
+## v0.4.13
+
+[compare changes](https://github.com/h3js/crossws/compare/v0.4.12...v0.4.13)
+
+### 🚀 Enhancements
+
+- **node, proxy:** Per-connection `perMessageDeflate` ([#208](https://github.com/h3js/crossws/pull/208))
+- **bunny:** Implement keepalive for WebSocket connections and add tests ([#207](https://github.com/h3js/crossws/pull/207))
+
+### ❤️ Contributors
+
+- Sandro Circi ([@sandros94](https://github.com/sandros94))
+- Pi0x <x@pi0.io>
+
 ## v0.4.12
 
 [compare changes](https://github.com/h3js/crossws/compare/v0.4.11...v0.4.12)
