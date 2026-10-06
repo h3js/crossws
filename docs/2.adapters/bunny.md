@@ -46,6 +46,10 @@ BunnySDK.net.http.serve(async (request: Request) => {
 });
 ```
 
+## Keeping the isolate alive
+
+Bunny evicts the isolate once the request handler returns unless the script tells the runtime that work is still in flight, and a WebSocket outlives the handler that upgraded it. The adapter takes care of this: it registers a promise with [`Bunny.v1.waitUntil`](https://bunny.net/docs/scripting/runtime#waituntil) when the socket is created and settles it on `close` or `error`, so you do not need to call `waitUntil` yourself.
+
 ## Protocol Negotiation
 
 You can control WebSocket protocol negotiation through the `upgrade` hook by setting the `sec-websocket-protocol` header. This is useful for implementing authorization or selecting specific subprotocols based on the request:
@@ -115,5 +119,3 @@ See [Bunny.net WebSocket Documentation](https://docs.bunny.net/scripting/websock
 ::read-more
 See [`src/adapters/bunny.ts`](https://github.com/h3js/crossws/blob/main/src/adapters/bunny.ts) for implementation.
 ::
-
-````
