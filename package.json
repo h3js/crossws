@@ -65,7 +65,7 @@
     "play:node": "jiti test/fixture/node.ts",
     "play:sse": "deno run --unstable-byonm -A --watch test/fixture/sse.ts",
     "play:uws": "jiti test/fixture/uws.ts",
-    "release": "pnpm test && pnpm build && changelogen --release && npm publish && git push --follow-tags",
+    "release": "pnpm test && pnpm build && changelogen --release && pnpm publish && git push --follow-tags",
     "test": "pnpm lint && pnpm typecheck && vitest run --coverage",
     "typecheck": "tsc --noEmit --skipLibCheck"
   },
