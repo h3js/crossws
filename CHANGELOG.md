@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.4.14
+
+[compare changes](https://github.com/h3js/crossws/compare/v0.4.13...v0.4.14)
+
+### 🏡 Chore
+
+- Update release script ([0848763](https://github.com/h3js/crossws/commit/0848763))
+
+### ❤️ Contributors
+
+- Pooya Parsa ([@pi0](https://github.com/pi0))
+
 ## v0.4.13
 
 [compare changes](https://github.com/h3js/crossws/compare/v0.4.12...v0.4.13)
