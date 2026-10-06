@@ -102,6 +102,10 @@ export const StubRequest = /* @__PURE__ */ (() => {
     text() {
       return Promise.resolve("");
     }
+
+    textStream() {
+      return new ReadableStream<string>({ start: (controller) => controller.close() });
+    }
   }
 
   Object.setPrototypeOf(StubRequest.prototype, globalThis.Request.prototype);

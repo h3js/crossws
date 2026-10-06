@@ -9,3 +9,4 @@ allowBuilds:
 minimumReleaseAgeExclude:
   - obuild*
   - srvx@0.12.7
+  - crossws
