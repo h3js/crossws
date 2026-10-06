@@ -324,8 +324,9 @@ class NodePeer extends Peer<{
     this._internal.ws.send(dataBuff, {
       binary: isBinary,
       ...options,
-      // `ws` compresses by default once `permessage-deflate` is negotiated (and
-      // honors its `threshold`); an explicit `undefined` would disable that.
+      // `ws` compresses by default once `permessage-deflate` is negotiated (its
+      // `threshold` only applies without server context takeover); an explicit
+      // `undefined` would disable that.
       compress: options?.compress ?? true,
     });
     return this._internal.ws.bufferedAmount;

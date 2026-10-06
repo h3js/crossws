@@ -66,7 +66,11 @@ Terminated peers surface through the usual `close` hook (code `1006`), so any te
 ```ts
 const ws = crossws({
   serverOptions: {
-    perMessageDeflate: { zlibDeflateOptions: { level: 3 }, threshold: 1024 },
+    perMessageDeflate: {
+      zlibDeflateOptions: { level: 3 },
+      serverNoContextTakeover: true, // required for `threshold` to apply
+      threshold: 1024,
+    },
   },
 });
 ```

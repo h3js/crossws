@@ -128,6 +128,7 @@ export interface WebSocketProxyOptions {
    *   target: "ws://127.0.0.1:8080",
    *   perMessageDeflate: {
    *     zlibDeflateOptions: { level: 3 },
+   *     serverNoContextTakeover: true, // required for `threshold` to apply
    *     threshold: 1024,
    *   },
    *   webSocketOptions: { perMessageDeflate: false },

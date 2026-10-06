@@ -312,7 +312,11 @@ export interface PerMessageDeflateOptions {
   };
   /** Options for the `zlib` inflate stream. */
   zlibInflateOptions?: { chunkSize?: number; windowBits?: number };
-  /** Payloads smaller than this many bytes are sent uncompressed (`ws` default: `1024`). */
+  /**
+   * Payloads smaller than this many bytes are sent uncompressed (`ws` default:
+   * `1024`). Only applied with `serverNoContextTakeover: true`; with context
+   * takeover (the default) every message is compressed regardless of size.
+   */
   threshold?: number;
   // `concurrencyLimit` is intentionally absent: `ws` applies it process-wide
   // (from the first deflate instance), so it belongs to `serverOptions`.

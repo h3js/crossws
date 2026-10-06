@@ -233,6 +233,7 @@ describe("node (per-connection perMessageDeflate)", () => {
   let url: string;
   let ws: ReturnType<typeof nodeAdapter>;
   const big = "x".repeat(64 * 1024);
+  const small = "x".repeat(512);
 
   beforeAll(async () => {
     ws = nodeAdapter({
@@ -241,6 +242,13 @@ describe("node (per-connection perMessageDeflate)", () => {
           const mode = new URL(req.url).searchParams.get("deflate");
           const headers = { "x-mode": mode || "default" };
           if (mode === "on") return { headers, perMessageDeflate: true };
+          if (mode === "takeover") return { headers, perMessageDeflate: { threshold: 1024 } };
+          if (mode === "no-takeover") {
+            return {
+              headers,
+              perMessageDeflate: { serverNoContextTakeover: true, threshold: 1024 },
+            };
+          }
           if (mode === "tuned") {
             return { headers, perMessageDeflate: { serverNoContextTakeover: true, threshold: 0 } };
           }
@@ -255,6 +263,8 @@ describe("node (per-connection perMessageDeflate)", () => {
             peer.send("subscribed");
           } else if (message.text() === "publish") {
             peer.publish("room", big);
+          } else if (message.text() === "small") {
+            peer.send(small);
           } else if (message.text() === "big-uncompressed") {
             peer.send(big, { compress: false });
           }
@@ -287,12 +297,12 @@ describe("node (per-connection perMessageDeflate)", () => {
   };
 
   // Bytes the client read off the wire to receive the reply to `command`.
-  const wireBytes = async (client: WebSocket, command: string) => {
+  const wireBytes = async (client: WebSocket, command: string, expected = big) => {
     const socket = (client as unknown as { _socket: { bytesRead: number } })._socket;
     const before = socket.bytesRead;
     const reply = new Promise<string>((resolve) => client.once("message", (d) => resolve(`${d}`)));
     client.send(command);
-    expect(await reply).toBe(big);
+    expect(await reply).toBe(expected);
     return socket.bytesRead - before;
   };
 
@@ -315,6 +325,19 @@ describe("node (per-connection perMessageDeflate)", () => {
     expect(await wireBytes(client, "big")).toBeLessThan(1024);
     expect(await wireBytes(client, "big-uncompressed")).toBeGreaterThan(big.length);
     client.close();
+  });
+
+  // `ws` only honors `threshold` without server context takeover; the docs rely
+  // on this, so pin it down.
+  test("`threshold` applies only with `serverNoContextTakeover`", async () => {
+    const { client: takeover } = await open("deflate=takeover");
+    expect(await wireBytes(takeover, "small", small)).toBeLessThan(small.length);
+    takeover.close();
+
+    const { client: noTakeover } = await open("deflate=no-takeover");
+    expect(await wireBytes(noTakeover, "small", small)).toBeGreaterThan(small.length);
+    expect(await wireBytes(noTakeover, "big")).toBeLessThan(1024);
+    noTakeover.close();
   });
 
   test("accepts ws-style tuning options", async () => {
