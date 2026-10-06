@@ -129,11 +129,18 @@ test("repeated serve() calls do not register duplicate upgrade handlers", async 
   currentServer = server;
   await server.ready();
 
-  const initialListeners = server.node?.server?.listenerCount("upgrade") ?? 0;
-  expect(initialListeners).toBe(1);
+  expect(server.node?.server?.listenerCount("upgrade")).toBe(1);
 
   // Repeated call to serve() should not add duplicate upgrade listeners
   await server.serve();
-  const subsequentListeners = server.node?.server?.listenerCount("upgrade") ?? 0;
-  expect(subsequentListeners).toBe(1);
+  expect(server.node?.server?.listenerCount("upgrade")).toBe(1);
+
+  // Upgrades still work after the repeated serve()
+  const client = new WebSocket(`ws://127.0.0.1:${port}/`);
+  await once(client, "open");
+  client.send("hello");
+  const [reply] = await once(client, "message");
+  expect(reply.toString()).toBe("hello");
+  client.close();
+  await once(client, "close");
 });
