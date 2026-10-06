@@ -319,7 +319,8 @@ export interface PerMessageDeflateOptions {
    */
   threshold?: number;
   // `concurrencyLimit` is intentionally absent: `ws` applies it process-wide
-  // (from the first deflate instance), so it belongs to `serverOptions`.
+  // (from the first deflate instance), so it is set on the server instead
+  // (`serverOptions`, or a user-supplied `wss`'s own options).
 }
 
 export type UpgradeError = Response | { readonly response: Response };

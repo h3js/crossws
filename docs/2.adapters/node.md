@@ -77,7 +77,7 @@ const ws = crossws({
 
 Or decide per connection by returning `perMessageDeflate` from the [`upgrade` hook](/guide/hooks#compression) (or the [`createWebSocketProxy`](/guide/proxy#compression) option). This works without access to the adapter options — e.g. when a framework creates the adapter for you. A per-connection value overrides `serverOptions` for that handshake only: an options object replaces the server's tuning, `true` enables the extension (keeping the server's tuning, if any), and `false` refuses it even when it is enabled server-wide. Everything else (`verifyClient`, `maxPayload`, …) still comes from the one server.
 
-`concurrencyLimit` (concurrent zlib operations) is process-wide in `ws`, so it can only be set through `serverOptions.perMessageDeflate`, not per connection.
+`concurrencyLimit` (concurrent zlib operations) can't be set per connection: `ws` keeps a single process-wide limit, taken from the first deflate instance it creates (including one created by a `ws` client). Set it on the server instead — via `serverOptions.perMessageDeflate.concurrencyLimit` when the adapter creates the server, or in your own server's `perMessageDeflate` options when you pass `wss`. crossws carries that value onto per-connection options.
 
 ## Delegating to an existing Node.js upgrade handler
 
