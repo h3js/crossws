@@ -52,7 +52,6 @@
     "*.d.ts"
   ],
   "scripts": {
-    "prepare": "obuild --stub",
     "build": "obuild",
     "dev": "vitest",
     "fmt": "oxlint . --fix && oxfmt src test",
