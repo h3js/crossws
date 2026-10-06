@@ -59,6 +59,20 @@ const ws = crossws({
 
 Terminated peers surface through the usual `close` hook (code `1006`), so any teardown wired to `close`/`error` (including [`createWebSocketProxy`](/guide/proxy) closing its upstream) runs unchanged. Pass `idleTimeout: 0` to opt out. The same option and default apply on the Bun, Deno, and uWebSockets adapters, where it maps to the runtime's native idle timeout.
 
+## Compression (`permessage-deflate`)
+
+`ws` leaves `permessage-deflate` off by default on the server. Enable it for every connection with `serverOptions`:
+
+```ts
+const ws = crossws({
+  serverOptions: {
+    perMessageDeflate: { zlibDeflateOptions: { level: 3 }, threshold: 1024 },
+  },
+});
+```
+
+Or decide per connection by returning `perMessageDeflate` from the [`upgrade` hook](/guide/hooks#compression) (or the [`createWebSocketProxy`](/guide/proxy#compression) option). This works without access to the adapter options — e.g. when a framework creates the adapter for you. A per-connection value overrides `serverOptions`; `false` refuses the extension even when it is enabled server-wide.
+
 ## Delegating to an existing Node.js upgrade handler
 
 If you already have a Node.js WebSocket library that exposes a raw `(req, socket, head)` upgrade handler (e.g. [`ws`](https://github.com/websockets/ws), `socket.io`, `express-ws`), you can route to it through crossws using `fromNodeUpgradeHandler`. This lets you keep crossws's upgrade-time request handling while delegating the WebSocket lifecycle to your existing library.

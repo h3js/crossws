@@ -1,7 +1,7 @@
 import type { AdapterOptions, AdapterInstance, Adapter } from "../adapter.ts";
 import { toBufferLike } from "../utils.ts";
 import { adapterUtils, getPeers, DEFAULT_IDLE_TIMEOUT } from "../adapter.ts";
-import { AdapterHookable } from "../hooks.ts";
+import { AdapterHookable, type PerMessageDeflateOptions } from "../hooks.ts";
 import { Message } from "../message.ts";
 import { WSError } from "../error.ts";
 import { Peer, type PeerContext } from "../peer.ts";
@@ -65,13 +65,45 @@ const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
   const globalPeers = new Map<string, Set<NodePeer>>();
   const baseUtils = adapterUtils(globalPeers, options);
 
-  const wss: WebSocketServer =
-    options.wss ||
-    (new _WebSocketServer({
+  const createWss = (overrides?: ServerOptions): WebSocketServer =>
+    new _WebSocketServer({
       noServer: true,
       handleProtocols: () => false,
       ...(options.serverOptions as any),
-    }) as WebSocketServer);
+      ...overrides,
+    }) as WebSocketServer;
+
+  const wss: WebSocketServer = options.wss || createWss();
+
+  // `ws` negotiates `permessage-deflate` from server-wide options, so a
+  // per-connection override (`perMessageDeflate` returned by the `upgrade` hook)
+  // is served by a sibling server configured accordingly, which then hands the
+  // socket to `wss` like any other connection. Siblings are created lazily, one
+  // per distinct setting (keyed by value so a hook returning a fresh object
+  // literal per upgrade doesn't create a server per connection).
+  const deflateServers = new Map<string, WebSocketServer>();
+  const getServer = (perMessageDeflate?: boolean | PerMessageDeflateOptions): WebSocketServer => {
+    if (
+      perMessageDeflate === undefined ||
+      (typeof perMessageDeflate === "boolean" &&
+        perMessageDeflate === !!wss.options.perMessageDeflate)
+    ) {
+      return wss;
+    }
+    const key = JSON.stringify(perMessageDeflate);
+    let server = deflateServers.get(key);
+    if (!server) {
+      server = createWss({
+        noServer: true,
+        port: undefined,
+        server: undefined,
+        perMessageDeflate,
+      });
+      server.on("headers", onHeaders);
+      deflateServers.set(key, server);
+    }
+    return server;
+  };
 
   // Sockets crossws opened through this adapter. We track them ourselves rather
   // than read `wss.clients` so the idle sweep and `closeAll` (a) never touch
@@ -195,14 +227,15 @@ const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
     wss.on("close", stopSweep);
   }
 
-  wss.on("headers", (outgoingHeaders, req) => {
+  function onHeaders(outgoingHeaders: string[], req: IncomingMessage) {
     const upgradeHeaders = (req as AugmentedReq)._upgradeHeaders;
     if (upgradeHeaders) {
       for (const [key, value] of new Headers(upgradeHeaders)) {
         outgoingHeaders.push(`${key}: ${value}`);
       }
     }
-  });
+  }
+  wss.on("headers", onHeaders);
 
   return {
     ...baseUtils,
@@ -223,7 +256,8 @@ const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
         // raise an unhandled rejection. Fail the handshake with a 500 instead.
         return sendResponse(socket, new Response("Internal Server Error", { status: 500 }));
       }
-      const { upgradeHeaders, endResponse, handled, context, namespace } = upgraded;
+      const { upgradeHeaders, endResponse, handled, context, namespace, perMessageDeflate } =
+        upgraded;
       if (endResponse) {
         return sendResponse(socket, endResponse);
       }
@@ -238,7 +272,7 @@ const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
       (nodeReq as AugmentedReq)._upgradeHeaders = upgradeHeaders;
       (nodeReq as AugmentedReq)._context = context;
       (nodeReq as AugmentedReq)._namespace = namespace;
-      wss.handleUpgrade(nodeReq, socket, head, (ws) => {
+      getServer(perMessageDeflate).handleUpgrade(nodeReq, socket, head, (ws) => {
         wss.emit("connection", ws, nodeReq);
       });
     },
@@ -282,9 +316,11 @@ class NodePeer extends Peer<{
     const dataBuff = toBufferLike(data);
     const isBinary = typeof dataBuff !== "string";
     this._internal.ws.send(dataBuff, {
-      compress: options?.compress,
       binary: isBinary,
       ...options,
+      // `ws` compresses by default once `permessage-deflate` is negotiated (and
+      // honors its `threshold`); an explicit `undefined` would disable that.
+      compress: options?.compress ?? true,
     });
     return this._internal.ws.bufferedAmount;
   }
@@ -296,9 +332,9 @@ class NodePeer extends Peer<{
     // must be sent as text. (Matches the uWS adapter's handling.)
     const isBinary = typeof dataBuff !== "string";
     const sendOptions = {
-      compress: options?.compress,
       binary: isBinary,
       ...options,
+      compress: options?.compress ?? true,
     };
     for (const peer of this._internal.peers) {
       if (peer !== this && peer._topics.has(topic)) {
