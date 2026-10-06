@@ -2,12 +2,10 @@ import type { Server, ServerPlugin, ServerOptions, ServerRequest } from "srvx";
 
 import type { Hooks, MaybePromise } from "../hooks";
 
-import type { BunOptions } from "../adapters/bun";
+import type { BunOptions, CloudflareOptions, DenoOptions } from "../adapters/_options";
 import type { BunnyOptions } from "../adapters/bunny";
-import type { DenoOptions } from "../adapters/deno";
 import type { NodeOptions } from "../adapters/node";
 import type { SSEOptions } from "../adapters/sse";
-import type { CloudflareOptions } from "../adapters/cloudflare";
 
 export type WSOptions = Partial<Hooks> & {
   /**

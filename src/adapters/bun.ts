@@ -1,5 +1,6 @@
 import type { WebSocketHandler, ServerWebSocket, Server } from "bun";
-import type { AdapterOptions, AdapterInstance, Adapter } from "../adapter.ts";
+import type { AdapterInstance, Adapter } from "../adapter.ts";
+import type { BunOptions } from "./_options.ts";
 import { toBufferLike } from "../utils.ts";
 import { adapterUtils, getPeers, DEFAULT_IDLE_TIMEOUT } from "../adapter.ts";
 import { AdapterHookable } from "../hooks.ts";
@@ -15,7 +16,7 @@ export interface BunAdapter extends AdapterInstance {
   handleUpgrade(req: Request, server: Server<ContextData>): Promise<Response | undefined>;
 }
 
-export interface BunOptions extends AdapterOptions {}
+export type { BunOptions } from "./_options.ts";
 
 type ContextData = {
   peer?: BunPeer;

@@ -1,6 +1,7 @@
 import type * as CF from "@cloudflare/workers-types";
 import type { DurableObject } from "cloudflare:workers";
-import type { AdapterOptions, AdapterInstance, Adapter } from "../adapter.ts";
+import type { AdapterInstance, Adapter } from "../adapter.ts";
+import type { CloudflareOptions, CloudflareDurableStub } from "./_options.ts";
 import type * as web from "../../types/web.ts";
 import { env as cfGlobalEnv } from "cloudflare:workers";
 import { toBufferLike } from "../utils.ts";
@@ -12,42 +13,9 @@ import { StubRequest } from "../_request.ts";
 import { WSError } from "../error.ts";
 import type { SyncDriver } from "../sync.ts";
 
-type WSDurableObjectStub = CF.DurableObjectStub & {
-  webSocketPublish?: (topic: string, data: unknown, opts: any) => Promise<void>;
-};
+export type { CloudflareOptions } from "./_options.ts";
 
-type ResolveDurableStub = (
-  req: CF.Request | undefined,
-  env: unknown,
-  context: CF.ExecutionContext | undefined,
-) => WSDurableObjectStub | undefined | Promise<WSDurableObjectStub | undefined>;
-
-export interface CloudflareOptions extends AdapterOptions {
-  /**
-   * Durable Object binding name from environment.
-   *
-   * **Note:** This option will be ignored if `resolveDurableStub` is provided.
-   *
-   * @default "$DurableObject"
-   */
-  bindingName?: string;
-
-  /**
-   * Durable Object instance name.
-   *
-   * **Note:** This option will be ignored if `resolveDurableStub` is provided.
-   *
-   * @default "crossws"
-   */
-  instanceName?: string;
-
-  /**
-   * Custom function that resolves Durable Object binding to handle the WebSocket upgrade.
-   *
-   * **Note:** This option will override `bindingName` and `instanceName`.
-   */
-  resolveDurableStub?: ResolveDurableStub;
-}
+type ResolveDurableStub = NonNullable<CloudflareOptions["resolveDurableStub"]>;
 
 // https://developers.cloudflare.com/durable-objects/examples/websocket-hibernation-server/
 
@@ -57,7 +25,7 @@ const cloudflareAdapter: Adapter<CloudflareDurableAdapter, CloudflareOptions> = 
 
   const resolveDurableStub: ResolveDurableStub =
     opts.resolveDurableStub ||
-    ((_req, env: any, _context): WSDurableObjectStub | undefined => {
+    ((_req, env: any, _context): CloudflareDurableStub | undefined => {
       const bindingName = opts.bindingName || "$DurableObject";
       const binding = (env || cfGlobalEnv)[bindingName] as CF.DurableObjectNamespace;
       if (binding) {
@@ -73,9 +41,9 @@ const cloudflareAdapter: Adapter<CloudflareDurableAdapter, CloudflareOptions> = 
     ...utils,
     handleUpgrade: async (request, cfEnv, cfCtx) => {
       // Upgrade request with Durable Object binding
-      const stub = await resolveDurableStub(request as CF.Request, cfEnv, cfCtx);
+      const stub = await resolveDurableStub(request as Request, cfEnv, cfCtx);
       if (stub) {
-        return stub.fetch(request as CF.Request) as unknown as Promise<Response>;
+        return stub.fetch(request) as Promise<Response>;
       }
 
       // [Fallback] Upgrade request in same Worker

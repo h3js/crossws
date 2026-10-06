@@ -1,4 +1,5 @@
-import type { AdapterOptions, AdapterInstance, Adapter } from "../adapter.ts";
+import type { AdapterInstance, Adapter } from "../adapter.ts";
+import type { DenoOptions } from "./_options.ts";
 import { toBufferLike } from "../utils.ts";
 import { adapterUtils, getPeers, DEFAULT_IDLE_TIMEOUT } from "../adapter.ts";
 import { AdapterHookable } from "../hooks.ts";
@@ -13,7 +14,7 @@ export interface DenoAdapter extends AdapterInstance {
   handleUpgrade(req: Request, info: ServeHandlerInfo): Promise<Response>;
 }
 
-export interface DenoOptions extends AdapterOptions {}
+export type { DenoOptions } from "./_options.ts";
 
 type WebSocketUpgrade = Deno.WebSocketUpgrade;
 type ServeHandlerInfo = {
