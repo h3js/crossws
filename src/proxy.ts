@@ -1,4 +1,4 @@
-import type { Hooks } from "./hooks.ts";
+import type { Hooks, PerMessageDeflateOptions } from "./hooks.ts";
 import type { Peer } from "./peer.ts";
 // Per-runtime WebSocket client, resolved statically via the `crossws/websocket`
 // export conditions (node → `ws`, deno → unix `client`, bun/native → global).
@@ -103,6 +103,41 @@ export interface WebSocketProxyOptions {
    * @default 0 (disabled)
    */
   clientIdleTimeout?: number;
+
+  /**
+   * Accept `permessage-deflate` compression from the **client** on the
+   * client↔proxy leg (`true`, or `ws`-style tuning options).
+   *
+   * The proxy terminates the WebSocket, so compression is negotiated on each
+   * leg independently and this setting does not apply to the proxy↔upstream
+   * leg. That leg is negotiated by the upstream client, which offers
+   * compression by default; pass `webSocketOptions: { perMessageDeflate: false }`
+   * to keep e.g. a loopback upstream leg uncompressed.
+   *
+   * Each compressed connection keeps its own `zlib` streams (a few hundred KB
+   * at the defaults) for its lifetime; shrink them with `serverMaxWindowBits` /
+   * `zlibDeflateOptions.memLevel`, and prefer a low `zlibDeflateOptions.level`
+   * (1–3) on hot paths.
+   *
+   * > [!NOTE]
+   * > Currently honored by the Node.js adapter only.
+   *
+   * @example
+   * ```ts
+   * createWebSocketProxy({
+   *   target: "ws://127.0.0.1:8080",
+   *   perMessageDeflate: {
+   *     zlibDeflateOptions: { level: 3 },
+   *     serverNoContextTakeover: true, // required for `threshold` to apply
+   *     threshold: 1024,
+   *   },
+   *   webSocketOptions: { perMessageDeflate: false },
+   * });
+   * ```
+   *
+   * @default undefined (adapter default; `ws` leaves compression off)
+   */
+  perMessageDeflate?: boolean | PerMessageDeflateOptions;
 
   /**
    * Custom `WebSocket` constructor used to dial the upstream. Useful when
@@ -210,9 +245,10 @@ export function createWebSocketProxy(
 
   return {
     upgrade(request) {
+      const perMessageDeflate = options.perMessageDeflate;
       const reqProtocol = request.headers.get("sec-websocket-protocol");
       if (options.forwardProtocol === false || !reqProtocol) {
-        return;
+        return perMessageDeflate === undefined ? undefined : { perMessageDeflate };
       }
       // Accept the first requested subprotocol so the upgrade handshake
       // echoes a value the client expects. Upstream must support it too.
@@ -222,9 +258,9 @@ export function createWebSocketProxy(
       // grammar ensures no other client-controlled bytes can land in a
       // response header — even under buggy or custom header writers.
       if (!accepted || !TOKEN_RE.test(accepted)) {
-        return;
+        return perMessageDeflate === undefined ? undefined : { perMessageDeflate };
       }
-      return { headers: { "sec-websocket-protocol": accepted } };
+      return { headers: { "sec-websocket-protocol": accepted }, perMessageDeflate };
     },
 
     open(peer) {

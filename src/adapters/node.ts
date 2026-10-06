@@ -1,7 +1,7 @@
 import type { AdapterOptions, AdapterInstance, Adapter } from "../adapter.ts";
 import { toBufferLike } from "../utils.ts";
 import { adapterUtils, getPeers, DEFAULT_IDLE_TIMEOUT } from "../adapter.ts";
-import { AdapterHookable } from "../hooks.ts";
+import { AdapterHookable, type PerMessageDeflateOptions } from "../hooks.ts";
 import { Message } from "../message.ts";
 import { WSError } from "../error.ts";
 import { Peer, type PeerContext } from "../peer.ts";
@@ -223,7 +223,8 @@ const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
         // raise an unhandled rejection. Fail the handshake with a 500 instead.
         return sendResponse(socket, new Response("Internal Server Error", { status: 500 }));
       }
-      const { upgradeHeaders, endResponse, handled, context, namespace } = upgraded;
+      const { upgradeHeaders, endResponse, handled, context, namespace, perMessageDeflate } =
+        upgraded;
       if (endResponse) {
         return sendResponse(socket, endResponse);
       }
@@ -238,7 +239,7 @@ const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
       (nodeReq as AugmentedReq)._upgradeHeaders = upgradeHeaders;
       (nodeReq as AugmentedReq)._context = context;
       (nodeReq as AugmentedReq)._namespace = namespace;
-      wss.handleUpgrade(nodeReq, socket, head, (ws) => {
+      handleUpgradeWithDeflate(wss, perMessageDeflate, nodeReq, socket, head, (ws) => {
         wss.emit("connection", ws, nodeReq);
       });
     },
@@ -258,6 +259,45 @@ export default nodeAdapter;
 
 export { fromNodeUpgradeHandler } from "../node-handler.ts";
 export type { NodeUpgradeHandler } from "../node-handler.ts";
+
+// `ws` negotiates `permessage-deflate` from its server-wide `options`, so a
+// per-connection setting (`perMessageDeflate` returned by the `upgrade` hook) is
+// applied by overriding that option for the duration of `handleUpgrade`. `ws`
+// reads it only synchronously there — the negotiated extension is built before
+// `verifyClient`/`completeUpgrade` run — so the override never leaks into another
+// handshake, while everything else (`verifyClient`, `maxPayload`, `clients`,
+// `headers` listeners, close state) stays that of the one shared server.
+function handleUpgradeWithDeflate(
+  wss: WebSocketServer,
+  perMessageDeflate: boolean | PerMessageDeflateOptions | undefined,
+  req: IncomingMessage,
+  socket: Duplex,
+  head: Buffer,
+  cb: (ws: WebSocketT) => void,
+): void {
+  const serverOptions = wss.options;
+  const original = serverOptions.perMessageDeflate;
+  // `true` enables the extension with the server's own tuning, if any.
+  let override: ServerOptions["perMessageDeflate"] =
+    perMessageDeflate === true ? original || {} : perMessageDeflate;
+  // `ws` sizes its process-wide zlib limiter from whichever deflate instance is
+  // created first, so keep the server's `concurrencyLimit` on per-connection
+  // options too; otherwise a hook-configured handshake could fix it at the default.
+  const concurrencyLimit = typeof original === "object" ? original.concurrencyLimit : undefined;
+  if (typeof override === "object" && override !== original && concurrencyLimit !== undefined) {
+    override = { ...override, concurrencyLimit };
+  }
+  if (override === undefined || override === original) {
+    wss.handleUpgrade(req, socket, head, cb);
+    return;
+  }
+  serverOptions.perMessageDeflate = override;
+  try {
+    wss.handleUpgrade(req, socket, head, cb);
+  } finally {
+    serverOptions.perMessageDeflate = original;
+  }
+}
 
 // --- peer ---
 
@@ -282,9 +322,12 @@ class NodePeer extends Peer<{
     const dataBuff = toBufferLike(data);
     const isBinary = typeof dataBuff !== "string";
     this._internal.ws.send(dataBuff, {
-      compress: options?.compress,
       binary: isBinary,
       ...options,
+      // `ws` compresses by default once `permessage-deflate` is negotiated (its
+      // `threshold` only applies without server context takeover); an explicit
+      // `undefined` would disable that.
+      compress: options?.compress ?? true,
     });
     return this._internal.ws.bufferedAmount;
   }
@@ -296,9 +339,9 @@ class NodePeer extends Peer<{
     // must be sent as text. (Matches the uWS adapter's handling.)
     const isBinary = typeof dataBuff !== "string";
     const sendOptions = {
-      compress: options?.compress,
       binary: isBinary,
       ...options,
+      compress: options?.compress ?? true,
     };
     for (const peer of this._internal.peers) {
       if (peer !== this && peer._topics.has(topic)) {

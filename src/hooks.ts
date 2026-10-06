@@ -95,6 +95,7 @@ export class AdapterHookable {
     upgradeHeaders?: HeadersInit;
     endResponse?: Response;
     handled?: boolean;
+    perMessageDeflate?: boolean | PerMessageDeflateOptions;
   }> {
     let namespace = this.options.getNamespace?.(request) ?? new URL(request.url).pathname;
 
@@ -102,6 +103,7 @@ export class AdapterHookable {
 
     let upgradeHeaders: HeadersInit | undefined;
     let protocolFromHook: string | undefined;
+    let perMessageDeflate: boolean | PerMessageDeflateOptions | undefined;
 
     try {
       // Seed the per-connection resolve cache against `context` so every later
@@ -130,6 +132,7 @@ export class AdapterHookable {
         }
         upgradeHeaders = res.headers;
         protocolFromHook = (res as { protocol?: string }).protocol;
+        perMessageDeflate = res.perMessageDeflate;
       }
     } catch (error) {
       const errResponse = (error as { response: Response }).response || error;
@@ -157,7 +160,7 @@ export class AdapterHookable {
       upgradeHeaders = merged;
     }
 
-    return { context, namespace, upgradeHeaders };
+    return { context, namespace, upgradeHeaders, perMessageDeflate };
   }
 
   // Pick the subprotocol to accept, in precedence order:
@@ -285,6 +288,41 @@ export type ResolveHooks = (
 
 export type MaybePromise<T> = T | Promise<T>;
 
+/**
+ * `permessage-deflate` (RFC 7692) settings for a single connection. Mirrors the
+ * `perMessageDeflate` server option of [`ws`](https://github.com/websockets/ws/blob/master/doc/ws.md#new-websocketserveroptions-callback),
+ * which applies it on Node.js.
+ */
+export interface PerMessageDeflateOptions {
+  /** Reset the server's compression context after each message (lower ratio). The `zlib` streams stay allocated. */
+  serverNoContextTakeover?: boolean;
+  /** Ask the client not to reuse its compression context across messages. */
+  clientNoContextTakeover?: boolean;
+  /** LZ77 window size (8–15) the server compresses with. Smaller windows use less memory. */
+  serverMaxWindowBits?: number;
+  /** LZ77 window size (8–15) the client is asked to compress with. */
+  clientMaxWindowBits?: number;
+  /** Options for the `zlib` deflate stream (e.g. `{ level: 3 }`). */
+  zlibDeflateOptions?: {
+    level?: number;
+    memLevel?: number;
+    strategy?: number;
+    chunkSize?: number;
+    windowBits?: number;
+  };
+  /** Options for the `zlib` inflate stream. */
+  zlibInflateOptions?: { chunkSize?: number; windowBits?: number };
+  /**
+   * Payloads smaller than this many bytes are sent uncompressed (`ws` default:
+   * `1024`). Only applied with `serverNoContextTakeover: true`; with context
+   * takeover (the default) every message is compressed regardless of size.
+   */
+  threshold?: number;
+  // `concurrencyLimit` is intentionally absent: `ws` applies it process-wide
+  // (from the first deflate instance), so it is set on the server instead
+  // (`serverOptions`, or a user-supplied `wss`'s own options).
+}
+
 export type UpgradeError = Response | { readonly response: Response };
 
 export interface Hooks {
@@ -299,6 +337,10 @@ export interface Hooks {
    *   {@link AdapterOptions.handleProtocols} option and takes precedence over
    *   it. It should be one of the subprotocols the client offered (the values
    *   in the request's `Sec-WebSocket-Protocol` header).
+   * - You can return { perMessageDeflate } to accept (`true` or an options
+   *   object) or refuse (`false`) `permessage-deflate` compression for this
+   *   connection, overriding the adapter's default. Only honored by the Node.js
+   *   adapter; other runtimes configure compression server-wide, if at all.
    * - You can return { namespace } to change the pub/sub namespace.
    * - You can return { context } to provide a custom peer context.
    * - You can return { handled: true } to signal that the upgrade has
@@ -317,6 +359,7 @@ export interface Hooks {
     | {
         headers?: HeadersInit;
         protocol?: string;
+        perMessageDeflate?: boolean | PerMessageDeflateOptions;
         namespace?: string;
         context?: PeerContext;
         handled?: boolean;

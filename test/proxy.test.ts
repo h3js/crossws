@@ -498,6 +498,19 @@ describe("createWebSocketProxy", () => {
 });
 
 describe("createWebSocketProxy unit hooks", () => {
+  test("returns perMessageDeflate from the upgrade hook", () => {
+    const perMessageDeflate = { threshold: 1024 };
+    const hooks = createWebSocketProxy({ target: "ws://localhost/", perMessageDeflate });
+    expect(hooks.upgrade?.(new Request("http://localhost/"))).toEqual({ perMessageDeflate });
+    const withProtocol = new Request("http://localhost/", {
+      headers: { "sec-websocket-protocol": "chat" },
+    });
+    expect(hooks.upgrade?.(withProtocol)).toEqual({
+      headers: { "sec-websocket-protocol": "chat" },
+      perMessageDeflate,
+    });
+  });
+
   test("echoes valid subprotocol tokens in upgrade response", () => {
     const hooks = createWebSocketProxy("ws://localhost/");
     const req = new Request("http://localhost/", {
@@ -830,5 +843,75 @@ describe("createWebSocketProxy internals", () => {
     expect(hooks.upgrade?.(peer.request)).toMatchObject({
       headers: { "sec-websocket-protocol": "x-test-vite-hmr" },
     });
+  });
+});
+
+// The proxy terminates the WebSocket, so `permessage-deflate` is negotiated per
+// leg: `perMessageDeflate` enables it towards the client only.
+describe("createWebSocketProxy (perMessageDeflate)", () => {
+  const big = "x".repeat(64 * 1024);
+  let upstreamServer: Server;
+  let proxyServer: Server;
+  let proxyURL: string;
+  let adapters: { close: () => Promise<void> }[];
+  let upstreamOffer: string | null | undefined;
+
+  beforeAll(async () => {
+    const upstream = nodeAdapter({
+      hooks: defineHooks({
+        upgrade(req) {
+          upstreamOffer = req.headers.get("sec-websocket-extensions");
+        },
+        message(peer, message) {
+          peer.send(message.text() === "big" ? big : `echo:${message.text()}`);
+        },
+      }),
+    });
+    upstreamServer = createServer((_req, res) => res.end("ok"));
+    upstreamServer.on("upgrade", upstream.handleUpgrade);
+    const upstreamPort = await getRandomPort("localhost");
+    await new Promise<void>((resolve) => upstreamServer.listen(upstreamPort, resolve));
+
+    const proxy = nodeAdapter({
+      hooks: createWebSocketProxy({
+        target: `ws://localhost:${upstreamPort}/`,
+        perMessageDeflate: { zlibDeflateOptions: { level: 3 } },
+        webSocketOptions: { perMessageDeflate: false },
+      }),
+    });
+    adapters = [upstream, proxy];
+    proxyServer = createServer((_req, res) => res.end("ok"));
+    proxyServer.on("upgrade", proxy.handleUpgrade);
+    const proxyPort = await getRandomPort("localhost");
+    proxyURL = `ws://localhost:${proxyPort}/`;
+    await new Promise<void>((resolve) => proxyServer.listen(proxyPort, resolve));
+    await waitForPort(proxyPort);
+  });
+
+  afterAll(async () => {
+    await Promise.all(adapters.map((adapter) => adapter.close()));
+    upstreamServer.close();
+    proxyServer.close();
+  });
+
+  test("compresses the client leg only", async () => {
+    const client = new WsWebSocket(proxyURL);
+    await new Promise((resolve) => client.on("open", resolve));
+    expect(client.extensions).toContain("permessage-deflate");
+
+    const echo = new Promise((resolve) => client.once("message", (d) => resolve(`${d}`)));
+    client.send("hi");
+    expect(await echo).toBe("echo:hi");
+    // The upstream leg is dialed without offering the extension.
+    expect(upstreamOffer).toBeNull();
+
+    const socket = (client as unknown as { _socket: { bytesRead: number } })._socket;
+    const before = socket.bytesRead;
+    const reply = new Promise((resolve) => client.once("message", (d) => resolve(`${d}`)));
+    client.send("big");
+    expect(await reply).toBe(big);
+    expect(socket.bytesRead - before).toBeLessThan(1024);
+
+    client.close();
   });
 });

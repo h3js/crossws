@@ -59,6 +59,26 @@ const ws = crossws({
 
 Terminated peers surface through the usual `close` hook (code `1006`), so any teardown wired to `close`/`error` (including [`createWebSocketProxy`](/guide/proxy) closing its upstream) runs unchanged. Pass `idleTimeout: 0` to opt out. The same option and default apply on the Bun, Deno, and uWebSockets adapters, where it maps to the runtime's native idle timeout.
 
+## Compression (`permessage-deflate`)
+
+`ws` leaves `permessage-deflate` off by default on the server. Enable it for every connection with `serverOptions`:
+
+```ts
+const ws = crossws({
+  serverOptions: {
+    perMessageDeflate: {
+      zlibDeflateOptions: { level: 3 },
+      serverNoContextTakeover: true, // required for `threshold` to apply
+      threshold: 1024,
+    },
+  },
+});
+```
+
+Or decide per connection by returning `perMessageDeflate` from the [`upgrade` hook](/guide/hooks#compression) (or the [`createWebSocketProxy`](/guide/proxy#compression) option). This works without access to the adapter options — e.g. when a framework creates the adapter for you. A per-connection value overrides `serverOptions` for that handshake only: an options object replaces the server's tuning, `true` enables the extension (keeping the server's tuning, if any), and `false` refuses it even when it is enabled server-wide. Everything else (`verifyClient`, `maxPayload`, …) still comes from the one server.
+
+`concurrencyLimit` (concurrent zlib operations) can't be set per connection: `ws` keeps a single process-wide limit, taken from the first deflate instance it creates (including one created by a `ws` client). Set it on the server instead — via `serverOptions.perMessageDeflate.concurrencyLimit` when the adapter creates the server, or in your own server's `perMessageDeflate` options when you pass `wss`. crossws carries that value onto per-connection options.
+
 ## Delegating to an existing Node.js upgrade handler
 
 If you already have a Node.js WebSocket library that exposes a raw `(req, socket, head)` upgrade handler (e.g. [`ws`](https://github.com/websockets/ws), `socket.io`, `express-ws`), you can route to it through crossws using `fromNodeUpgradeHandler`. This lets you keep crossws's upgrade-time request handling while delegating the WebSocket lifecycle to your existing library.
