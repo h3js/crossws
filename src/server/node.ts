@@ -13,16 +13,21 @@ export function plugin(wsOpts: WSOptions): ServerPlugin {
       ...wsOpts.options?.node,
     });
     const originalServe = server.serve;
+    let upgradeRegistered = false;
     server.serve = () => {
-      server.node?.server!.on("upgrade", (req, socket, head) => {
-        ws.handleUpgrade(
-          req,
-          socket,
-          head,
-          // @ts-expect-error (upgrade is not typed)
-          new NodeRequest({ req, upgrade: { socket, head } }),
-        );
-      });
+      const nodeServer = server.node?.server;
+      if (nodeServer && !upgradeRegistered) {
+        upgradeRegistered = true;
+        nodeServer.on("upgrade", (req, socket, head) => {
+          ws.handleUpgrade(
+            req,
+            socket,
+            head,
+            // @ts-expect-error (upgrade is not typed)
+            new NodeRequest({ req, upgrade: { socket, head } }),
+          );
+        });
+      }
       return originalServe.call(server);
     };
   };
