@@ -3,7 +3,7 @@
   "version": "0.4.15",
   "description": "Cross-platform WebSocket Servers for Node.js, Deno, Bun and Cloudflare Workers",
   "homepage": "https://crossws.h3.dev",
-  "repository": "h3js/crossws",
+  "repository": "https://github.com/h3js/crossws",
   "license": "MIT",
   "sideEffects": false,
   "type": "module",
