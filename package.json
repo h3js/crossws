@@ -72,34 +72,34 @@
     "crossws": "workspace:*"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^5.20261005.1",
-    "@types/bun": "^1.4.2",
+    "@cloudflare/workers-types": "^5.20261016.1",
+    "@types/bun": "^1.4.3",
     "@types/deno": "^2.7.0",
-    "@types/node": "^26.6.4",
-    "@types/web": "^0.0.354",
+    "@types/node": "^26.6.5",
+    "@types/web": "^0.0.359",
     "@types/ws": "^8.18.2",
-    "@vitest/coverage-v8": "^4.1.11",
+    "@vitest/coverage-v8": "^5.0.5",
     "automd": "^0.4.3",
     "changelogen": "^0.6.2",
     "consola": "^3.4.2",
     "eslint-config-unjs": "^0.6.2",
-    "eventsource": "^5.1.2",
-    "execa": "^10.0.1",
+    "eventsource": "^5.1.3",
+    "execa": "^10.1.1",
     "get-port-please": "^3.2.0",
-    "h3": "^2.0.1",
+    "h3": "^2.0.2",
     "jiti": "^2.7.0",
     "listhen": "^1.10.1",
-    "obuild": "^0.4.43",
-    "oxfmt": "^0.64.0",
-    "oxlint": "^1.87.0",
-    "rolldown": "^1.2.12",
-    "srvx": "^0.12.8",
+    "obuild": "^0.4.45",
+    "oxfmt": "^0.73.0",
+    "oxlint": "^1.88.0",
+    "rolldown": "^1.2.14",
+    "srvx": "^1.0.5",
     "typescript": "^7.0.2",
-    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.57.0",
     "unbuild": "^3.6.1",
-    "undici": "^8.11.2",
-    "vitest": "^4.1.11",
-    "wrangler": "^4.147.0",
+    "undici": "^8.12.2",
+    "uWebSockets.js": "github:uNetworking/uWebSockets.js#v20.57.0",
+    "vitest": "^5.0.5",
+    "wrangler": "^4.151.1",
     "ws": "^8.22.0"
   },
   "peerDependencies": {
@@ -110,5 +110,5 @@
       "optional": true
     }
   },
-  "packageManager": "pnpm@11.22.0"
+  "packageManager": "pnpm@12.14.0"
 }

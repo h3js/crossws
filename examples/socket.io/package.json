@@ -8,7 +8,7 @@
   },
   "dependencies": {
     "crossws": "workspace:*",
-    "socket.io": "^4.8.1",
+    "socket.io": "^4.8.4",
     "srvx": "latest"
   }
 }
