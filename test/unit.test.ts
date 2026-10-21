@@ -1,8 +1,8 @@
 import { createServer } from "node:http";
-import { once } from "node:events";
+import { EventEmitter, once } from "node:events";
 import { getRandomPort } from "get-port-please";
-import { test, expect } from "vitest";
-import { serve } from "../src/server/node.ts";
+import { test, expect, vi } from "vitest";
+import { plugin, serve } from "../src/server/node.ts";
 import { toBufferLike } from "../src/utils.ts";
 
 test("toBufferLike", () => {
@@ -29,4 +29,18 @@ test("ready() rejects on EADDRINUSE", async () => {
   });
   await expect(server.ready()).rejects.toMatchObject({ code: "EADDRINUSE" });
   blocker.close();
+});
+
+test("node server plugin adds the upgrade listener once when serve() is called repeatedly", () => {
+  const nodeServer = new EventEmitter();
+  const serveFn = vi.fn();
+  const server = { node: { server: nodeServer }, serve: serveFn } as any;
+
+  plugin({ upgrade: () => ({}) } as any)(server);
+  server.serve();
+  server.serve();
+  server.serve();
+
+  expect(nodeServer.listenerCount("upgrade")).toBe(1);
+  expect(serveFn).toHaveBeenCalledTimes(3);
 });
