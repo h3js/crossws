@@ -136,8 +136,7 @@ export function wsTests(getURL: () => string, opts: WSTestOpts): void {
 
     // Remote address
     if (!/sse|cloudflare/.test(opts.adapter)) {
-      // eslint-disable-next-line no-control-regex
-      expect(remoteAddress).toMatch(/:{2}1|(?:0{4}:){7}0{3}1|127\.0\.\0\.1/);
+      expect(remoteAddress).toMatch(/:{2}1|(?:0{4}:){7}0{3}1|127\.0\.0\.1/);
     }
 
     // Context
