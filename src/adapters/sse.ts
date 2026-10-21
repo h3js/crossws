@@ -125,7 +125,7 @@ class SSEPeer extends Peer<{
         _internal.ws.readyState = 2; /* CLOSING */
         _internal.peers.delete(this);
         _internal.peersMap?.delete(this.id);
-        Promise.resolve(this._internal.hooks.callHook("close", this)).finally(() => {
+        Promise.resolve(this._internal.hooks.callHook("close", this, {})).finally(() => {
           _internal.ws.readyState = 3; /* CLOSED */
         });
       },
