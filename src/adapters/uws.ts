@@ -60,7 +60,7 @@ const uwsAdapter: Adapter<UWSAdapter, UWSOptions> = (options = {}) => {
         peers.delete(peer);
         hooks.callHook("close", peer, {
           code,
-          reason: message?.toString(),
+          reason: new TextDecoder().decode(message),
         });
         ((peer as any)._internal.ws as UwsWebSocketProxy).readyState = 3; /* CLOSED */
       },

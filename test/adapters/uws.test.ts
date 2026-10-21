@@ -117,3 +117,36 @@ describe("uws native global publish", () => {
     expect(clientNs2.messages).toEqual(["broadcast"]);
   });
 });
+
+// uWS hands the `close` handler the reason as an `ArrayBuffer`.
+describe("uws close hook", () => {
+  const closes: Array<{ code?: number; reason?: string }> = [];
+  const hooks = defineHooks({
+    close: (_peer, details) => {
+      closes.push(details);
+    },
+  });
+
+  let server: { port: number; close: () => void };
+
+  beforeAll(async () => {
+    const ws = uwsAdapter({ hooks });
+    const app = App().ws("/*", ws.websocket);
+    const port = await getRandomPort("localhost");
+    const token = await new Promise<us_listen_socket>((resolve, reject) => {
+      app.listen(port, (listenSocket) =>
+        listenSocket ? resolve(listenSocket) : reject(new Error("uWS listen failed")),
+      );
+    });
+    await waitForPort(port);
+    server = { port, close: () => us_listen_socket_close(token) };
+  });
+
+  afterAll(() => server.close());
+
+  test("receives the client's code and reason", async () => {
+    const client = await wsConnect(`ws://localhost:${server.port}/`);
+    client.ws.close(4000, "bye");
+    await expect.poll(() => closes).toEqual([{ code: 4000, reason: "bye" }]);
+  });
+});
