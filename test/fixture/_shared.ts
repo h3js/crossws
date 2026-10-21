@@ -3,6 +3,9 @@ import { type Adapter, type AdapterInstance, defineHooks } from "../../src/index
 export const getIndexHTML = (opts?: { sse?: boolean }): Promise<string> =>
   import("./_index.html.ts").then((r) => r.default(opts));
 
+// The `close` hook's details per peer id, served at `/close-details?peer=<id>`.
+const closeDetails = new Map<string, { code?: number; reason?: string }>();
+
 export function createDemo<T extends Adapter<any, any>>(
   adapter: T,
   options?: Parameters<T>[0],
@@ -64,6 +67,9 @@ export function createDemo<T extends Adapter<any, any>>(
           peer.publish("chat", msgText);
         }
       }
+    },
+    close(peer, details) {
+      closeDetails.set(peer.id, { code: details.code, reason: details.reason });
     },
     ping(peer, data) {
       peer.send(`ping-received:${new TextDecoder().decode(data)}`);
@@ -132,5 +138,7 @@ export function handleDemoRoutes(ws: AdapterInstance, request: Request): Respons
     const message = url.searchParams.get("message") || "";
     ws.publish(topic, message);
     return new Response("published");
+  } else if (url.pathname === "/close-details") {
+    return Response.json(closeDetails.get(url.searchParams.get("peer") || "") ?? null);
   }
 }

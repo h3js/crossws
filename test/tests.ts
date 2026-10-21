@@ -146,6 +146,21 @@ export function wsTests(getURL: () => string, opts: WSTestOpts): void {
     }
   });
 
+  test.runIf(/^(bun|deno)$/.test(opts.adapter))(
+    "close hook receives the client's code and reason",
+    async () => {
+      const ws = await wsConnect(getURL(), { skip: 1 });
+      await ws.send("debug");
+      const { id } = await ws.next();
+      ws.ws.close(4000, "bye");
+      await expect
+        .poll(() =>
+          fetch(getURL().replace("ws", "http") + `close-details?peer=${id}`).then((r) => r.json()),
+        )
+        .toEqual({ code: 4000, reason: "bye" });
+    },
+  );
+
   test("peer.bufferedAmount", async () => {
     const ws = await wsConnect(getURL(), { skip: 1 });
     await ws.send("debug");

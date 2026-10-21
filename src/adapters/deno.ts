@@ -76,9 +76,9 @@ const denoAdapter: Adapter<DenoAdapter, DenoOptions> = (options = {}) => {
       upgrade.socket.addEventListener("message", (event) => {
         hooks.callHook("message", peer, new Message(event.data, peer, event));
       });
-      upgrade.socket.addEventListener("close", () => {
+      upgrade.socket.addEventListener("close", (event) => {
         peers.delete(peer);
-        hooks.callHook("close", peer, {});
+        hooks.callHook("close", peer, { code: event.code, reason: event.reason });
       });
       upgrade.socket.addEventListener("error", (error) => {
         peers.delete(peer);
