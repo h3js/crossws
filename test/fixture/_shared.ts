@@ -59,6 +59,10 @@ export function createDemo<T extends Adapter<any, any>>(
           peer.ping("server-ping");
           break;
         }
+        case "terminate": {
+          peer.terminate();
+          break;
+        }
         default: {
           peer.send(msgText);
           peer.publish("chat", msgText);

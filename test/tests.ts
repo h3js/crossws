@@ -178,6 +178,20 @@ export function wsTests(getURL: () => string, opts: WSTestOpts): void {
     });
   });
 
+  // SSE: EventSource has no close event. Cloudflare without Durable Objects: under local
+  // `wrangler dev`, a server-side close didn't reach the client within 4 s.
+  test.skipIf(/^(sse|cloudflare)$/.test(opts.adapter))(
+    "peer.terminate() closes the connection",
+    async () => {
+      const ws = await wsConnect(getURL(), { skip: 1 });
+      const closed = new Promise((resolve) => ws.ws.addEventListener("close", resolve));
+      await ws.send("terminate");
+      await closed;
+      const response = await fetch(getURL().replace("ws", "http"));
+      expect(response.status).toBe(200);
+    },
+  );
+
   test.skipIf(opts.adapter === "sse")("upgrade fail response", async () => {
     const ws = await wsConnect(getURL() + "?unauthorized");
     expect(ws.error).toBeDefined();

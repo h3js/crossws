@@ -139,8 +139,4 @@ class DenoPeer extends Peer<{
   close(code?: number, reason?: string) {
     this._internal.ws.close(code, reason);
   }
-
-  override terminate(): void {
-    (this._internal.ws as any).terminate();
-  }
 }
