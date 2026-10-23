@@ -213,6 +213,65 @@ export interface WebSocketProxyOptions {
   webSocketOptions?:
     | Record<string, unknown>
     | ((peer: Peer) => Record<string, unknown> | undefined | void);
+
+  /**
+   * Called once the {@link target} is resolved for a peer, right before the
+   * upstream is dialed.
+   *
+   * Every call is followed by exactly one {@link onUpstreamClose} call for the
+   * same peer — including when the dial fails, the upstream handshake times
+   * out, or this callback throws (the peer is then closed with `1011`). It may
+   * also close the peer itself (e.g. with a custom code), and the upstream is
+   * then not dialed. Peers that close or time out before their target
+   * resolves, or whose resolver fails, trigger neither callback.
+   */
+  onUpstreamConnect?: (peer: Peer, upstream: WebSocketProxyUpstream) => void;
+
+  /**
+   * Called when the upstream handshake completes and buffered client frames
+   * have been flushed. Not called for connections that end before opening.
+   *
+   * Errors thrown here are logged with `console.error`.
+   */
+  onUpstreamOpen?: (peer: Peer, upstream: WebSocketProxyUpstream) => void;
+
+  /**
+   * Called exactly once per {@link onUpstreamConnect} call, when the proxied
+   * connection ends — whichever side ended it first.
+   *
+   * Errors thrown here are logged with `console.error`.
+   */
+  onUpstreamClose?: (peer: Peer, details: WebSocketProxyCloseDetails) => void;
+}
+
+export interface WebSocketProxyUpstream {
+  /** Resolved upstream URL the peer is proxied to. */
+  url: URL;
+}
+
+export interface WebSocketProxyCloseDetails extends WebSocketProxyUpstream {
+  /**
+   * Which side ended the proxied connection:
+   *
+   * - `"client"` — the peer closed or errored.
+   * - `"upstream"` — the upstream closed or errored.
+   * - `"proxy"` — the proxy closed it (connect timeout, client idle timeout,
+   *   buffer limit, or a failed upstream setup).
+   */
+  source: "client" | "upstream" | "proxy";
+
+  /**
+   * Close code as received from the client or upstream (e.g. a raw `1006`),
+   * or, for `"proxy"`, the one the proxy closed the peer with. Unset when the
+   * client or upstream errored instead of closing.
+   */
+  code?: number;
+
+  /** Close reason that accompanies {@link code}. */
+  reason?: string;
+
+  /** The error that ended the connection, if any. */
+  error?: unknown;
 }
 
 /**
@@ -271,6 +330,7 @@ export function createWebSocketProxy(
       // asynchronously when the target resolver returns a promise.
       const state: UpstreamState = {
         ws: undefined,
+        url: undefined,
         buffer: [],
         bufferSize: 0,
         open: false,
@@ -288,6 +348,11 @@ export function createWebSocketProxy(
           if (upstreams.get(peer.id) !== state || state.open) return;
           _cleanupState(upstreams, peer.id, state);
           _safeClose(peer, 1011, "Upstream connect timeout");
+          _notifyClose(options, peer, state, {
+            source: "proxy",
+            code: 1011,
+            reason: "Upstream connect timeout",
+          });
         }, timeoutMs);
       }
 
@@ -301,6 +366,11 @@ export function createWebSocketProxy(
           if (remaining <= 0) {
             _cleanupState(upstreams, peer.id, state);
             _safeClose(peer, 1001, "Client idle timeout");
+            _notifyClose(options, peer, state, {
+              source: "proxy",
+              code: 1001,
+              reason: "Client idle timeout",
+            });
           } else {
             state.idleTimer = setTimeout(checkIdle, remaining);
           }
@@ -359,6 +429,11 @@ export function createWebSocketProxy(
       if (limit > 0 && state.bufferSize + size > limit) {
         _cleanupState(upstreams, peer.id, state);
         _safeClose(peer, 1009, "Proxy buffer limit exceeded");
+        _notifyClose(options, peer, state, {
+          source: "proxy",
+          code: 1009,
+          reason: "Proxy buffer limit exceeded",
+        });
         return;
       }
       // Copy binary views before buffering: the adapter may own the backing
@@ -381,9 +456,14 @@ export function createWebSocketProxy(
       } catch {
         // ignore invalid code/reason
       }
+      _notifyClose(options, peer, state, {
+        source: "client",
+        code: details.code,
+        reason: details.reason,
+      });
     },
 
-    error(peer) {
+    error(peer, error) {
       const state = upstreams.get(peer.id);
       if (!state) return;
       _clearTimeout(state);
@@ -394,6 +474,7 @@ export function createWebSocketProxy(
       } catch {
         // ignore
       }
+      _notifyClose(options, peer, state, { source: "client", error });
     },
   };
 }
@@ -403,6 +484,9 @@ export function createWebSocketProxy(
 interface UpstreamState {
   // `undefined` until the upstream is dialed — the target may resolve async.
   ws: WebSocket | undefined;
+  // Resolved target, set once `onUpstreamConnect` is due. Cleared by
+  // `_notifyClose` so `onUpstreamClose` fires at most once.
+  url: URL | undefined;
   buffer: Array<string | Uint8Array>;
   bufferSize: number;
   open: boolean;
@@ -425,8 +509,17 @@ function _dialUpstream(
   // resolving — its state is gone from the map, so don't dial a stale upstream.
   if (upstreams.get(peer.id) !== state) return;
 
+  // From here on the peer counts as connected: whatever happens next settles
+  // it through `_notifyClose`.
+  state.url = url;
+
   let ws: WebSocket;
   try {
+    options.onUpstreamConnect?.(peer, { url });
+    // The callback may have closed the peer itself. Adapters such as uWS run the
+    // `close` hook synchronously (already settled); others only mark the socket
+    // CLOSING and settle it from their `close` hook later. Don't dial either way.
+    if (upstreams.get(peer.id) !== state || (peer.websocket?.readyState ?? 1) > 1) return;
     const protocols = _resolveProtocols(peer, options.forwardProtocol);
     const wsOptions = _resolveWsOptions(options, peer);
     // The runtime `#websocket` client (or a caller-supplied `WebSocket`) owns
@@ -442,13 +535,19 @@ function _dialUpstream(
         ) => WebSocket)(url, protocols, wsOptions)
       : new WebSocketCtor(url, protocols);
     ws.binaryType = "arraybuffer";
-  } catch {
+  } catch (error) {
     // Bad target URL, disallowed scheme, invalid subprotocol token,
     // or a throwing custom resolver — close the peer with a
     // generic internal-error code rather than letting the exception
     // escape the hook.
     _cleanupState(upstreams, peer.id, state);
     _safeClose(peer, 1011, "Upstream setup failed");
+    _notifyClose(options, peer, state, {
+      source: "proxy",
+      code: 1011,
+      reason: "Upstream setup failed",
+      error,
+    });
     return;
   }
   state.ws = ws;
@@ -469,6 +568,9 @@ function _dialUpstream(
       state.buffer.length = 0;
       state.bufferSize = 0;
     }
+    if (options.onUpstreamOpen) {
+      _invokeCallback("onUpstreamOpen", () => options.onUpstreamOpen!(peer, { url }));
+    }
   });
 
   ws.addEventListener("message", (event) => {
@@ -485,13 +587,51 @@ function _dialUpstream(
     if (upstreams.get(peer.id) !== state) return;
     _cleanupState(upstreams, peer.id, state);
     _safeClose(peer, _remapIncomingCode(event.code), event.reason);
+    _notifyClose(options, peer, state, {
+      source: "upstream",
+      code: event.code,
+      reason: event.reason,
+    });
   });
 
-  ws.addEventListener("error", () => {
+  ws.addEventListener("error", (event) => {
     if (upstreams.get(peer.id) !== state) return;
     _cleanupState(upstreams, peer.id, state);
     _safeClose(peer, 1011, "Upstream error");
+    // `ws` carries the underlying error on the event; WHATWG clients don't.
+    _notifyClose(options, peer, state, {
+      source: "upstream",
+      error: (event as Partial<ErrorEvent>).error ?? event,
+    });
   });
+}
+
+// Settle a connected peer (one whose target resolved) with `onUpstreamClose`.
+// Called after the proxy finished tearing the peer down, so a throwing
+// callback can't leave the upstream or the peer half-closed.
+function _notifyClose(
+  options: WebSocketProxyOptions,
+  peer: Peer,
+  state: UpstreamState,
+  details: Omit<WebSocketProxyCloseDetails, "url">,
+): void {
+  const url = state.url;
+  if (!url) return;
+  state.url = undefined;
+  if (options.onUpstreamClose) {
+    _invokeCallback("onUpstreamClose", () => options.onUpstreamClose!(peer, { url, ...details }));
+  }
+}
+
+// Lifecycle callbacks run from timers, upstream listeners and promise
+// continuations, where a throw would surface as an uncaught exception (or
+// unhandled rejection) and take the process down — log it instead.
+function _invokeCallback(name: string, fn: () => void): void {
+  try {
+    fn();
+  } catch (error) {
+    console.error(`[crossws] proxy \`${name}\` callback failed:`, error);
+  }
 }
 
 function _cleanupState(
@@ -529,9 +669,11 @@ function _resolveTarget(target: WebSocketProxyOptions["target"], peer: Peer): UR
   // Detect it structurally (not via `instanceof Promise`) so non-native
   // promises (Bluebird, cross-realm, custom thenables) are awaited too.
   if (_isThenable(raw)) {
-    return Promise.resolve(raw).then((value) => (value instanceof URL ? value : new URL(value)));
+    return Promise.resolve(raw).then((value) => new URL(value));
   }
-  return raw instanceof URL ? raw : new URL(raw);
+  // Always a fresh copy: the URL is handed to lifecycle callbacks, so a static
+  // (or resolver-cached) `URL` must not be shared — and mutable — across peers.
+  return new URL(raw);
 }
 
 function _isThenable(value: unknown): value is PromiseLike<unknown> {
