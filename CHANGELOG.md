@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.4.16
+
+[compare changes](https://github.com/h3js/crossws/compare/v0.4.15...v0.4.16)
+
+### 🚀 Enhancements
+
+- **proxy:** Lifecycle callbacks for proxied connections ([#219](https://github.com/h3js/crossws/pull/219))
+
+### 🏡 Chore
+
+- Update dependencies ([857b982](https://github.com/h3js/crossws/commit/857b982))
+- Update dependencies ([fa4cd88](https://github.com/h3js/crossws/commit/fa4cd88))
+
+### 🤖 CI
+
+- Update actions ([2e523be](https://github.com/h3js/crossws/commit/2e523be))
+
+### ❤️ Contributors
+
+- Pooya Parsa ([@pi0](https://github.com/pi0))
+- Pi0x <x@pi0.io>
+
 ## v0.4.15
 
 [compare changes](https://github.com/h3js/crossws/compare/v0.4.14...v0.4.15)
