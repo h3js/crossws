@@ -8,6 +8,7 @@ import { getRandomPort, waitForPort } from "get-port-please";
 import { WebSocket as WsWebSocket } from "ws";
 import nodeAdapter from "../src/adapters/node.ts";
 import { createWebSocketProxy, defineHooks } from "../src/index.ts";
+import type { WebSocketProxyCloseDetails, WebSocketProxyOptions } from "../src/index.ts";
 import { _normalizeOutgoingCode, _remapIncomingCode, _resolveProtocols } from "../src/proxy.ts";
 import { wsConnect } from "./_utils.ts";
 
@@ -913,5 +914,197 @@ describe("createWebSocketProxy (perMessageDeflate)", () => {
     expect(socket.bytesRead - before).toBeLessThan(1024);
 
     client.close();
+  });
+});
+
+describe("createWebSocketProxy (lifecycle callbacks)", () => {
+  type Event =
+    | { type: "connect" | "open"; url: string }
+    | ({ type: "close"; url: string } & Omit<WebSocketProxyCloseDetails, "url">);
+
+  let upstreamServer: Server;
+  let upstreamURL: string;
+  const servers: Server[] = [];
+
+  beforeAll(async () => {
+    const upstream = nodeAdapter({
+      hooks: defineHooks({
+        async upgrade(req) {
+          if (new URL(req.url).pathname === "/slow") {
+            await new Promise((r) => setTimeout(r, 100));
+          }
+        },
+        message(peer, message) {
+          const text = message.text();
+          if (text.startsWith("close:")) {
+            const [, code, reason] = text.split(":");
+            peer.close(Number(code), reason);
+            return;
+          }
+          peer.send(`echo:${text}`);
+        },
+      }),
+    });
+    upstreamServer = createServer((_req, res) => res.end("ok"));
+    upstreamServer.on("upgrade", upstream.handleUpgrade);
+    const port = await getRandomPort("localhost");
+    upstreamURL = `ws://localhost:${port}/`;
+    await new Promise<void>((resolve) => upstreamServer.listen(port, resolve));
+    await waitForPort(port);
+  });
+
+  afterAll(() => {
+    for (const server of [...servers, upstreamServer]) {
+      server.closeAllConnections?.();
+      server.close();
+    }
+  });
+
+  // Start a proxy that records every lifecycle callback, and resolves
+  // `closed` on the first `onUpstreamClose`.
+  async function startProxy(options: Omit<WebSocketProxyOptions, `onUpstream${string}`>) {
+    const events: Event[] = [];
+    let onClosed: () => void;
+    const closed = new Promise<void>((resolve) => (onClosed = resolve));
+    const proxy = nodeAdapter({
+      hooks: createWebSocketProxy({
+        ...options,
+        onUpstreamConnect: (_peer, { url }) => events.push({ type: "connect", url: url.href }),
+        onUpstreamOpen: (_peer, { url }) => events.push({ type: "open", url: url.href }),
+        onUpstreamClose: (_peer, { url, ...details }) => {
+          events.push({ type: "close", url: url.href, ...details });
+          onClosed();
+        },
+      }),
+    });
+    const server = createServer((_req, res) => res.end("ok"));
+    servers.push(server);
+    server.on("upgrade", proxy.handleUpgrade);
+    const port = await getRandomPort("localhost");
+    await new Promise<void>((resolve) => server.listen(port, resolve));
+    await waitForPort(port);
+    return { url: `ws://localhost:${port}/`, events, closed };
+  }
+
+  function waitClientClose(ws: WebSocket) {
+    return new Promise<CloseEvent>((resolve) => {
+      ws.addEventListener("close", (e) => resolve(e as CloseEvent));
+    });
+  }
+
+  test("reports connect, open and a client-initiated close", async () => {
+    const proxy = await startProxy({ target: async () => upstreamURL });
+    const ws = await wsConnect(proxy.url);
+    await ws.send("hi");
+    expect(await ws.next()).toBe("echo:hi");
+    ws.ws.close(4000, "bye");
+    await proxy.closed;
+    expect(proxy.events).toEqual([
+      { type: "connect", url: upstreamURL },
+      { type: "open", url: upstreamURL },
+      { type: "close", url: upstreamURL, source: "client", code: 4000, reason: "bye" },
+    ]);
+  });
+
+  test("reports an upstream-initiated close", async () => {
+    const proxy = await startProxy({ target: upstreamURL });
+    const ws = await wsConnect(proxy.url);
+    const clientClose = waitClientClose(ws.ws);
+    await ws.send("close:4001:done");
+    await proxy.closed;
+    expect((await clientClose).code).toBe(4001);
+    expect(proxy.events.at(-1)).toEqual({
+      type: "close",
+      url: upstreamURL,
+      source: "upstream",
+      code: 4001,
+      reason: "done",
+    });
+  });
+
+  test("settles a connect timeout without an open", async () => {
+    const proxy = await startProxy({ target: `${upstreamURL}slow`, connectTimeout: 25 });
+    const ws = await wsConnect(proxy.url);
+    expect((await waitClientClose(ws.ws)).code).toBe(1011);
+    await proxy.closed;
+    expect(proxy.events).toEqual([
+      { type: "connect", url: `${upstreamURL}slow` },
+      {
+        type: "close",
+        url: `${upstreamURL}slow`,
+        source: "proxy",
+        code: 1011,
+        reason: "Upstream connect timeout",
+      },
+    ]);
+  });
+
+  test("settles an upstream that cannot be reached", async () => {
+    const deadURL = `ws://localhost:${await getRandomPort("localhost")}/`;
+    const proxy = await startProxy({ target: deadURL });
+    const ws = await wsConnect(proxy.url);
+    expect((await waitClientClose(ws.ws)).code).toBe(1011);
+    await proxy.closed;
+    expect(proxy.events).toHaveLength(2);
+    expect(proxy.events[1]).toMatchObject({ type: "close", url: deadURL, source: "upstream" });
+    expect(proxy.events[1]).toHaveProperty("error");
+  });
+
+  test("settles with the error when onUpstreamConnect throws", async () => {
+    const thrown = new Error("rejected by accounting");
+    const closes: WebSocketProxyCloseDetails[] = [];
+    const proxy = nodeAdapter({
+      hooks: createWebSocketProxy({
+        target: upstreamURL,
+        onUpstreamConnect: () => {
+          throw thrown;
+        },
+        onUpstreamClose: (_peer, details) => closes.push(details),
+      }),
+    });
+    const server = createServer((_req, res) => res.end("ok"));
+    servers.push(server);
+    server.on("upgrade", proxy.handleUpgrade);
+    const port = await getRandomPort("localhost");
+    await new Promise<void>((resolve) => server.listen(port, resolve));
+    await waitForPort(port);
+
+    const ws = await wsConnect(`ws://localhost:${port}/`);
+    expect((await waitClientClose(ws.ws)).code).toBe(1011);
+    expect(closes).toEqual([
+      {
+        url: new URL(upstreamURL),
+        source: "proxy",
+        code: 1011,
+        reason: "Upstream setup failed",
+        error: thrown,
+      },
+    ]);
+  });
+
+  test("skips peers whose target never resolved", async () => {
+    let resolveTarget!: (url: string) => void;
+    const target = new Promise<string>((resolve) => (resolveTarget = resolve));
+    const proxy = await startProxy({ target: () => target });
+    const ws = await wsConnect(proxy.url);
+    const clientClose = waitClientClose(ws.ws);
+    ws.ws.close(1000);
+    await clientClose;
+    // Let the proxy's `close` hook run: resolving after the peer is gone must
+    // not dial (or report) anything.
+    await new Promise((r) => setTimeout(r, 50));
+    resolveTarget(upstreamURL);
+    await new Promise((r) => setTimeout(r, 50));
+
+    const rejecting = await startProxy({
+      target: async () => {
+        throw new Error("no worker");
+      },
+    });
+    const ws2 = await wsConnect(rejecting.url);
+    expect((await waitClientClose(ws2.ws)).code).toBe(1011);
+
+    expect(proxy.events).toEqual([]);
+    expect(rejecting.events).toEqual([]);
   });
 });
