@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { afterAll, beforeAll, describe, expect, test, vi } from "vitest";
 import { createServer, Server } from "node:http";
 import { existsSync, unlinkSync } from "node:fs";
 import { connect as netConnect } from "node:net";
@@ -960,8 +960,9 @@ describe("createWebSocketProxy (lifecycle callbacks)", () => {
     }
   });
 
-  // Start a proxy that records every lifecycle callback, and resolves
-  // `closed` on the first `onUpstreamClose`.
+  // Start a proxy that records every lifecycle callback. `closed` resolves a
+  // beat after the first `onUpstreamClose`, so asserting the full event list
+  // also proves no duplicate report follows.
   async function startProxy(options: Omit<WebSocketProxyOptions, `onUpstream${string}`>) {
     const events: Event[] = [];
     let onClosed: () => void;
@@ -983,8 +984,10 @@ describe("createWebSocketProxy (lifecycle callbacks)", () => {
     const port = await getRandomPort("localhost");
     await new Promise<void>((resolve) => server.listen(port, resolve));
     await waitForPort(port);
-    return { url: `ws://localhost:${port}/`, events, closed };
+    return { url: `ws://localhost:${port}/`, events, closed: closed.then(settle) };
   }
+
+  const settle = () => new Promise((r) => setTimeout(r, 50));
 
   function waitClientClose(ws: WebSocket) {
     return new Promise<CloseEvent>((resolve) => {
@@ -1013,13 +1016,11 @@ describe("createWebSocketProxy (lifecycle callbacks)", () => {
     await ws.send("close:4001:done");
     await proxy.closed;
     expect((await clientClose).code).toBe(4001);
-    expect(proxy.events.at(-1)).toEqual({
-      type: "close",
-      url: upstreamURL,
-      source: "upstream",
-      code: 4001,
-      reason: "done",
-    });
+    expect(proxy.events).toEqual([
+      { type: "connect", url: upstreamURL },
+      { type: "open", url: upstreamURL },
+      { type: "close", url: upstreamURL, source: "upstream", code: 4001, reason: "done" },
+    ]);
   });
 
   test("settles a connect timeout without an open", async () => {
@@ -1047,7 +1048,9 @@ describe("createWebSocketProxy (lifecycle callbacks)", () => {
     await proxy.closed;
     expect(proxy.events).toHaveLength(2);
     expect(proxy.events[1]).toMatchObject({ type: "close", url: deadURL, source: "upstream" });
-    expect(proxy.events[1]).toHaveProperty("error");
+    // The underlying error, not the `error` event, and no made-up close code.
+    expect(proxy.events[1]).toHaveProperty("error", expect.any(Error));
+    expect(proxy.events[1]).not.toHaveProperty("code");
   });
 
   test("settles with the error when onUpstreamConnect throws", async () => {
@@ -1092,9 +1095,9 @@ describe("createWebSocketProxy (lifecycle callbacks)", () => {
     await clientClose;
     // Let the proxy's `close` hook run: resolving after the peer is gone must
     // not dial (or report) anything.
-    await new Promise((r) => setTimeout(r, 50));
+    await settle();
     resolveTarget(upstreamURL);
-    await new Promise((r) => setTimeout(r, 50));
+    await settle();
 
     const rejecting = await startProxy({
       target: async () => {
@@ -1104,7 +1107,142 @@ describe("createWebSocketProxy (lifecycle callbacks)", () => {
     const ws2 = await wsConnect(rejecting.url);
     expect((await waitClientClose(ws2.ws)).code).toBe(1011);
 
+    // Connect timeout while the resolver is still pending.
+    const pending = await startProxy({ target: () => new Promise(() => {}), connectTimeout: 25 });
+    const ws3 = await wsConnect(pending.url);
+    expect((await waitClientClose(ws3.ws)).code).toBe(1011);
+    await settle();
+
     expect(proxy.events).toEqual([]);
     expect(rejecting.events).toEqual([]);
+    expect(pending.events).toEqual([]);
+  });
+
+  test("settles a client idle timeout", async () => {
+    const proxy = await startProxy({ target: upstreamURL, clientIdleTimeout: 50 });
+    const ws = await wsConnect(proxy.url);
+    expect((await waitClientClose(ws.ws)).code).toBe(1001);
+    await proxy.closed;
+    expect(proxy.events).toEqual([
+      { type: "connect", url: upstreamURL },
+      { type: "open", url: upstreamURL },
+      {
+        type: "close",
+        url: upstreamURL,
+        source: "proxy",
+        code: 1001,
+        reason: "Client idle timeout",
+      },
+    ]);
+  });
+
+  test("settles a buffer limit overflow", async () => {
+    const proxy = await startProxy({ target: `${upstreamURL}slow`, maxBufferSize: 5 });
+    const ws = await wsConnect(proxy.url);
+    const clientClose = waitClientClose(ws.ws);
+    await ws.send("this is more than five bytes");
+    expect((await clientClose).code).toBe(1009);
+    await proxy.closed;
+    expect(proxy.events).toEqual([
+      { type: "connect", url: `${upstreamURL}slow` },
+      {
+        type: "close",
+        url: `${upstreamURL}slow`,
+        source: "proxy",
+        code: 1009,
+        reason: "Proxy buffer limit exceeded",
+      },
+    ]);
+  });
+});
+
+describe("createWebSocketProxy (lifecycle callbacks, unit)", () => {
+  const instances: StubWS[] = [];
+  class StubWS extends EventTarget {
+    binaryType = "arraybuffer";
+    readyState = 0;
+    constructor(public url: URL) {
+      super();
+      instances.push(this);
+    }
+    send(): void {}
+    close(): void {}
+  }
+
+  function stubPeer(id: string, onClose?: () => void) {
+    return {
+      id,
+      request: new Request("http://localhost/"),
+      close: onClose ?? (() => {}),
+      send() {},
+    };
+  }
+
+  test("doesn't dial when onUpstreamConnect closes the peer", () => {
+    instances.length = 0;
+    const closes: WebSocketProxyCloseDetails[] = [];
+    // Adapters such as uWS run the `close` hook synchronously from `peer.close()`.
+    const peer = stubPeer("p-reenter", () =>
+      hooks.close?.(peer as never, { code: 1013, reason: "busy" }),
+    );
+    const hooks = createWebSocketProxy({
+      target: "ws://upstream.invalid/",
+      WebSocket: StubWS as unknown as typeof WebSocket,
+      connectTimeout: 0,
+      onUpstreamConnect: (p) => p.close(1013, "busy"),
+      onUpstreamClose: (_p, details) => closes.push(details),
+    });
+    hooks.open?.(peer as never);
+    expect(instances).toHaveLength(0);
+    expect(closes).toEqual([
+      { url: new URL("ws://upstream.invalid/"), source: "client", code: 1013, reason: "busy" },
+    ]);
+  });
+
+  test("logs errors thrown by onUpstreamOpen and onUpstreamClose", () => {
+    instances.length = 0;
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const hooks = createWebSocketProxy({
+        target: "ws://upstream.invalid/",
+        WebSocket: StubWS as unknown as typeof WebSocket,
+        connectTimeout: 0,
+        onUpstreamOpen: () => {
+          throw new Error("open failed");
+        },
+        onUpstreamClose: () => {
+          throw new Error("close failed");
+        },
+      });
+      hooks.open?.(stubPeer("p-throws") as never);
+      instances[0]!.dispatchEvent(new Event("open"));
+      instances[0]!.dispatchEvent(Object.assign(new Event("close"), { code: 1000, reason: "" }));
+      expect(logged.mock.calls.map((args) => (args[1] as Error).message)).toEqual([
+        "open failed",
+        "close failed",
+      ]);
+    } finally {
+      logged.mockRestore();
+    }
+  });
+
+  test("gives each peer its own copy of a static URL target", () => {
+    instances.length = 0;
+    const target = new URL("ws://upstream.invalid/");
+    const seen: URL[] = [];
+    const hooks = createWebSocketProxy({
+      target,
+      WebSocket: StubWS as unknown as typeof WebSocket,
+      connectTimeout: 0,
+      onUpstreamConnect: (_p, { url }) => {
+        seen.push(url);
+        url.searchParams.set("mutated", "1");
+      },
+    });
+    hooks.open?.(stubPeer("p-url-1") as never);
+    hooks.open?.(stubPeer("p-url-2") as never);
+    expect(seen[0]).not.toBe(seen[1]);
+    expect(target.href).toBe("ws://upstream.invalid/");
+    expect(instances[1]!.url.href).toBe("ws://upstream.invalid/?mutated=1");
   });
 });
