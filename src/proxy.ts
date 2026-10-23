@@ -516,9 +516,10 @@ function _dialUpstream(
   let ws: WebSocket;
   try {
     options.onUpstreamConnect?.(peer, { url });
-    // The callback may have closed the peer itself (adapters such as uWS run
-    // the `close` hook synchronously) — it is already settled, so don't dial.
-    if (upstreams.get(peer.id) !== state) return;
+    // The callback may have closed the peer itself. Adapters such as uWS run the
+    // `close` hook synchronously (already settled); others only mark the socket
+    // CLOSING and settle it from their `close` hook later. Don't dial either way.
+    if (upstreams.get(peer.id) !== state || (peer.websocket?.readyState ?? 1) > 1) return;
     const protocols = _resolveProtocols(peer, options.forwardProtocol);
     const wsOptions = _resolveWsOptions(options, peer);
     // The runtime `#websocket` client (or a caller-supplied `WebSocket`) owns

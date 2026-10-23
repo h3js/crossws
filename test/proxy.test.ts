@@ -1199,6 +1199,30 @@ describe("createWebSocketProxy (lifecycle callbacks, unit)", () => {
     ]);
   });
 
+  test("doesn't dial when onUpstreamConnect closes the peer (async close hook)", () => {
+    instances.length = 0;
+    const closes: WebSocketProxyCloseDetails[] = [];
+    // Most adapters only mark the socket CLOSING and run the `close` hook later.
+    const websocket = { readyState: 1 };
+    const peer = { ...stubPeer("p-closing", () => (websocket.readyState = 2)), websocket };
+    const hooks = createWebSocketProxy({
+      target: "ws://upstream.invalid/",
+      WebSocket: StubWS as unknown as typeof WebSocket,
+      connectTimeout: 0,
+      onUpstreamConnect: (p) => p.close(1013, "busy"),
+      onUpstreamClose: (_p, details) => closes.push(details),
+    });
+    hooks.open?.(peer as never);
+    expect(instances).toHaveLength(0);
+    expect(closes).toEqual([]);
+    // The adapter's deferred `close` hook still settles the peer exactly once.
+    hooks.close?.(peer as never, { code: 1013, reason: "busy" });
+    hooks.close?.(peer as never, { code: 1013, reason: "busy" });
+    expect(closes).toEqual([
+      { url: new URL("ws://upstream.invalid/"), source: "client", code: 1013, reason: "busy" },
+    ]);
+  });
+
   test("logs errors thrown by onUpstreamOpen and onUpstreamClose", () => {
     instances.length = 0;
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
