@@ -1,4 +1,5 @@
 // You can run this demo using `npm run play:cf-durable` in repo
+import type { ExecutionContext } from "@cloudflare/workers-types";
 import { DurableObject } from "cloudflare:workers";
 import cloudflareAdapter from "../../src/adapters/cloudflare.ts";
 import { createDemo, getIndexHTML, handleDemoRoutes } from "./_shared.ts";
