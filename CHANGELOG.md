@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.4.17
+
+[compare changes](https://github.com/h3js/crossws/compare/v0.4.16...v0.4.17)
+
+### 🩹 Fixes
+
+- **vercel:** Skip Node.js runtime guard on Vercel Bun runtime ([4910073](https://github.com/h3js/crossws/commit/4910073))
+- **uws:** Capture remote address at upgrade ([5c2f4cb](https://github.com/h3js/crossws/commit/5c2f4cb))
+
+### 🏡 Chore
+
+- Update dependencies ([14e2ce0](https://github.com/h3js/crossws/commit/14e2ce0))
+
+### ❤️ Contributors
+
+- Pooya Parsa ([@pi0](https://github.com/pi0))
+
 ## v0.4.16
 
 [compare changes](https://github.com/h3js/crossws/compare/v0.4.15...v0.4.16)
