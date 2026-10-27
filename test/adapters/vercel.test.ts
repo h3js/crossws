@@ -72,6 +72,20 @@ describe("vercel", () => {
     }
   });
 
+  test("can be created on Vercel's Bun runtime", () => {
+    const hadBun = "Bun" in globalThis;
+    if (!hadBun) {
+      (globalThis as any).Bun = {};
+    }
+    try {
+      expect(() => vercelAdapter()).not.toThrow();
+    } finally {
+      if (!hadBun) {
+        delete (globalThis as any).Bun;
+      }
+    }
+  });
+
   describe("fetch-style handleWebUpgrade", () => {
     beforeAll(async () => {
       server = createServer((req, res) => {

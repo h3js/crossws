@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { Duplex } from "node:stream";
 import { NodeRequest } from "srvx/node";
 import type { Adapter } from "../adapter.ts";
-import nodeAdapter, { type NodeAdapter, type NodeOptions } from "./node.ts";
+import { _nodeAdapter, type NodeAdapter, type NodeOptions } from "./node.ts";
 
 // --- types ---
 
@@ -44,7 +44,9 @@ interface VercelRequestContext {
 const VERCEL_REQUEST_CONTEXT_SYMBOL = Symbol.for("@vercel/request-context");
 
 const vercelAdapter: Adapter<VercelAdapter, VercelOptions> = (options = {}) => {
-  const wss = nodeAdapter(options);
+  // Vercel owns the server and hands over Node.js request/socket objects on
+  // its Bun runtime too, so skip the Node.js adapter's runtime guard.
+  const wss = _nodeAdapter(options);
 
   // Web path: receives a `Request`, returns a `Response`.
   async function handleWebUpgrade(request: Request): Promise<Response | undefined> {

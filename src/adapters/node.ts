@@ -61,7 +61,19 @@ const nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
   if ("Deno" in globalThis || "Bun" in globalThis) {
     throw new Error("[crossws] Using Node.js adapter in an incompatible environment.");
   }
+  return _nodeAdapter(options);
+};
 
+/**
+ * Node.js adapter without the runtime guard.
+ *
+ * Used by adapters for platforms that own the server and hand over Node.js
+ * request/socket objects regardless of the underlying runtime (e.g. Vercel's
+ * Bun runtime).
+ *
+ * @internal
+ */
+export const _nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) => {
   const hooks = new AdapterHookable(options);
   const globalPeers = new Map<string, Set<NodePeer>>();
   const baseUtils = adapterUtils(globalPeers, options);
