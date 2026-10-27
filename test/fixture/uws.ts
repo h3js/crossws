@@ -24,6 +24,8 @@ app.get("/*", async (res, _req) => {
   });
 });
 
-app.listen(3001, () => {
-  console.log("Listening to port 3001");
+const port = Number(process.env.PORT) || 3001;
+
+app.listen(port, () => {
+  console.log(`Listening to port ${port}`);
 });

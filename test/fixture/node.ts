@@ -14,6 +14,6 @@ const server = createServer(async (req, res) => {
 server.on("upgrade", ws.handleUpgrade);
 
 const port = process.env.PORT || 3001;
-server.listen(3001, () => {
+server.listen(port, () => {
   console.log(`Server running at http://localhost:${port}/`);
 });
