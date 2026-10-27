@@ -21,6 +21,7 @@ type UserData = {
   extensions: string;
   context: PeerContext;
   namespace: string;
+  remoteAddress: string;
 };
 
 type WebSocketHandler = uws.WebSocketBehavior<UserData>;
@@ -107,6 +108,10 @@ const uwsAdapter: Adapter<UWSAdapter, UWSOptions> = (options = {}) => {
 
         const webReq = new UWSReqProxy(req);
 
+        // Since uWS v20.66.0, `ws.getRemoteAddressAsText()` returns an empty
+        // value on the upgraded WebSocket, so capture it from the response here.
+        const remoteAddress = new TextDecoder().decode(res.getRemoteAddressAsText());
+
         const { upgradeHeaders, endResponse, context, namespace } = await hooks.upgrade(webReq);
         if (endResponse) {
           res.writeStatus(`${endResponse.status} ${endResponse.statusText}`);
@@ -151,6 +156,7 @@ const uwsAdapter: Adapter<UWSAdapter, UWSOptions> = (options = {}) => {
               extensions,
               context,
               namespace,
+              remoteAddress,
             } satisfies UserData,
             key,
             "",
@@ -202,6 +208,9 @@ class UWSPeer extends Peer<{
   hooks: AdapterHookable;
 }> {
   override get remoteAddress(): string | undefined {
+    if (this._internal.uwsData.remoteAddress) {
+      return this._internal.uwsData.remoteAddress;
+    }
     try {
       const addr = new TextDecoder().decode(this._internal.uws.getRemoteAddressAsText());
       return addr;
