@@ -13,16 +13,22 @@ export function plugin(wsOpts: WSOptions): ServerPlugin {
       ...wsOpts.options?.node,
     });
     const originalServe = server.serve;
+    let upgradeHandlerAdded = false;
     server.serve = () => {
-      server.node?.server!.on("upgrade", (req, socket, head) => {
-        ws.handleUpgrade(
-          req,
-          socket,
-          head,
-          // @ts-expect-error (upgrade is not typed)
-          new NodeRequest({ req, upgrade: { socket, head } }),
-        );
-      });
+      // Calling `serve()` more than once must not add one more upgrade listener
+      // each time, every extra listener would handle the same upgrade again.
+      if (!upgradeHandlerAdded) {
+        upgradeHandlerAdded = true;
+        server.node?.server!.on("upgrade", (req, socket, head) => {
+          ws.handleUpgrade(
+            req,
+            socket,
+            head,
+            // @ts-expect-error (upgrade is not typed)
+            new NodeRequest({ req, upgrade: { socket, head } }),
+          );
+        });
+      }
       return originalServe.call(server);
     };
   };
