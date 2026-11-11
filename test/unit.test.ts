@@ -60,6 +60,38 @@ test("close(true) terminates connected WebSocket peers", async () => {
   await vi.waitFor(() => expect(closed).toHaveBeenCalledOnce());
 });
 
+test("close(true) resolves while an upgrade hook is pending", async () => {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  let upgradeStarted!: () => void;
+  const started = new Promise<void>((r) => (upgradeStarted = r));
+  const { server, url } = await serveWS({
+    async upgrade() {
+      upgradeStarted();
+      await gate;
+    },
+  });
+  const client = new WebSocket(url);
+  client.on("error", () => {});
+  const clientClose = new Promise((r) => client.once("close", r));
+  await started;
+
+  const closing = server.close(true);
+  release();
+
+  await closing;
+  await clientClose;
+  expect(client.readyState).toBe(WebSocket.CLOSED);
+});
+
+test("repeated serve() adds the upgrade listener once", async () => {
+  const { server } = await serveWS({});
+  await server.serve();
+  await server.serve();
+  expect(server.node!.server!.listenerCount("upgrade")).toBe(1);
+  await server.close(true);
+});
+
 test("close() leaves connected WebSocket peers open", async () => {
   const { server, url } = await serveWS({
     message(peer, message) {
