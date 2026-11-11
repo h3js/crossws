@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { createServer, Server } from "node:http";
+import { createServer, request, Server, type IncomingMessage } from "node:http";
 import { WebSocket, WebSocketServer } from "ws";
 import { getRandomPort, waitForPort } from "get-port-please";
 import nodeAdapter from "../../src/adapters/node";
@@ -52,6 +52,25 @@ describe("node", () => {
   });
 
   pingPongTests(() => url);
+
+  // The socket is closed after the response, so clients must not reuse it
+  test("upgrade fail response closes the connection", async () => {
+    const res = await new Promise<IncomingMessage>((resolve, reject) => {
+      const req = request(url.replace("ws:", "http:") + "?unauthorized", {
+        headers: {
+          connection: "Upgrade",
+          upgrade: "websocket",
+          "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+          "sec-websocket-version": "13",
+        },
+      });
+      req.on("response", (res) => resolve(res.resume()));
+      req.on("error", reject);
+      req.end();
+    });
+    expect(res.statusCode).toBe(401);
+    expect(res.headers.connection).toBe("close");
+  });
 
   test("forcefully terminates when force=true", async () => {
     ws.closeAll(undefined, undefined, true);

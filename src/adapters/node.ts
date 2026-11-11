@@ -398,7 +398,11 @@ class NodeReqProxy extends StubRequest {
 async function sendResponse(socket: Duplex, res: Response) {
   const head = [
     `HTTP/1.1 ${res.status || 200} ${res.statusText || ""}`,
-    ...[...res.headers.entries()].map(([key, value]) => `${key}: ${value}`),
+    ...[...res.headers.entries()]
+      .filter(([key]) => key !== "connection")
+      .map(([key, value]) => `${key}: ${value}`),
+    // The socket is closed after the response
+    "connection: close",
   ];
   socket.write(head.join("\r\n") + "\r\n\r\n");
   if (res.body) {
