@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { Agent, createServer, request, Server, type IncomingMessage } from "node:http";
 import { connect } from "node:net";
 import { WebSocket, WebSocketServer } from "ws";
@@ -67,6 +67,45 @@ describe("node", () => {
   });
 });
 
+// Sends a WebSocket handshake on a raw socket and returns the raw response
+// bytes, read until the socket closes.
+function rawUpgrade(port: number, path: string) {
+  return new Promise<string>((resolve) => {
+    const socket = openUpgrade(port, path);
+    let data = "";
+    socket.setEncoding("latin1");
+    socket.on("data", (chunk) => (data += chunk));
+    socket.on("error", () => {});
+    socket.on("close", () => resolve(data));
+  });
+}
+
+function openUpgrade(port: number, path: string) {
+  const socket = connect(port, "localhost");
+  socket.write(
+    [
+      `GET ${path} HTTP/1.1`,
+      `host: localhost:${port}`,
+      "connection: Upgrade",
+      "upgrade: websocket",
+      "sec-websocket-key: dGhlIHNhbXBsZSBub25jZQ==",
+      "sec-websocket-version: 13",
+    ].join("\r\n") + "\r\n\r\n",
+  );
+  return socket;
+}
+
+function parseHead(raw: string) {
+  const [head, ...body] = raw.split("\r\n\r\n");
+  const [status, ...lines] = head!.split("\r\n");
+  const headers = lines.map((line) => line.split(": ")[0]!.toLowerCase());
+  const get = (name: string) =>
+    lines
+      .filter((line) => line.toLowerCase().startsWith(`${name}:`))
+      .map((line) => line.slice(name.length + 1).trim());
+  return { status, headers, get, body: body.join("\r\n\r\n") };
+}
+
 // The socket is destroyed after an upgrade rejection, so the response must say
 // `connection: close` or keep-alive clients pool the dead socket (#221). The
 // body is close-delimited, so framing/keep-alive headers from the app are
@@ -119,41 +158,8 @@ describe("node (upgrade rejection response)", () => {
     server.close();
   });
 
-  // Raw bytes of the response, read until the server closes the socket.
-  const rawUpgrade = (path: string) =>
-    new Promise<string>((resolve, reject) => {
-      const socket = connect(port, "localhost", () => {
-        socket.write(
-          [
-            `GET ${path} HTTP/1.1`,
-            `host: localhost:${port}`,
-            "connection: Upgrade",
-            "upgrade: websocket",
-            "sec-websocket-key: dGhlIHNhbXBsZSBub25jZQ==",
-            "sec-websocket-version: 13",
-          ].join("\r\n") + "\r\n\r\n",
-        );
-      });
-      let data = "";
-      socket.setEncoding("latin1");
-      socket.on("data", (chunk) => (data += chunk));
-      socket.on("end", () => resolve(data));
-      socket.on("error", reject);
-    });
-
-  const parseHead = (raw: string) => {
-    const [head, body] = raw.split("\r\n\r\n");
-    const [status, ...lines] = head!.split("\r\n");
-    const headers = lines.map((line) => line.split(": ")[0]!.toLowerCase());
-    const get = (name: string) =>
-      lines
-        .filter((line) => line.toLowerCase().startsWith(`${name}:`))
-        .map((line) => line.slice(name.length + 1).trim());
-    return { status, headers, get, body };
-  };
-
   test("replaces app keep-alive headers with `connection: close`", async () => {
-    const res = parseHead(await rawUpgrade("/?keep-alive"));
+    const res = parseHead(await rawUpgrade(port, "/?keep-alive"));
     expect(res.status).toBe("HTTP/1.1 401 ");
     expect(res.get("connection")).toEqual(["close"]);
     expect(res.headers).not.toContain("keep-alive");
@@ -163,7 +169,7 @@ describe("node (upgrade rejection response)", () => {
   });
 
   test("keeps other `connection` tokens", async () => {
-    const res = parseHead(await rawUpgrade("/?upgrade-required"));
+    const res = parseHead(await rawUpgrade(port, "/?upgrade-required"));
     expect(res.status).toBe("HTTP/1.1 426 ");
     expect(res.get("connection")).toEqual(["upgrade, close"]);
     expect(res.get("upgrade")).toEqual(["websocket"]);
@@ -195,6 +201,179 @@ describe("node (upgrade rejection response)", () => {
     }
     agent.destroy();
     expect(sockets.size).toBe(3);
+  });
+});
+
+// `handleUpgrade` runs fire-and-forget from the server's `upgrade` listener on a
+// raw socket that has no `error` listener, so any failure while handling the
+// handshake or writing a rejection must not crash the process.
+describe("node (upgrade rejection robustness)", () => {
+  let server: Server;
+  let port: number;
+  let ws: ReturnType<typeof nodeAdapter>;
+  let unhandled: unknown[] = [];
+  const onUnhandled = (error: unknown) => unhandled.push(error);
+  const consoleError = vi.fn();
+  let consoleSpy: { mockRestore: () => void };
+  const endless = { pulls: 0, cancelled: false };
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  beforeAll(async () => {
+    process.on("uncaughtException", onUnhandled);
+    process.on("unhandledRejection", onUnhandled);
+    consoleSpy = vi.spyOn(console, "error").mockImplementation(consoleError);
+    ws = nodeAdapter({
+      hooks: defineHooks({
+        async upgrade(req) {
+          switch (new URL(req.url).search) {
+            case "?slow": {
+              await sleep(100);
+              return new Response("unauthorized", { status: 401 });
+            }
+            case "?body-error": {
+              const body = new ReadableStream({
+                start(controller) {
+                  controller.enqueue(new TextEncoder().encode("partial"));
+                  setTimeout(() => controller.error(new Error("upstream cut off")), 10);
+                },
+              });
+              return new Response(body, { status: 401 });
+            }
+            case "?endless": {
+              const chunk = new Uint8Array(64 * 1024);
+              const body = new ReadableStream({
+                pull(controller) {
+                  // Bounded, so a regression can't exhaust memory.
+                  if (++endless.pulls > 1000) controller.close();
+                  else controller.enqueue(chunk);
+                },
+                cancel() {
+                  endless.cancelled = true;
+                },
+              });
+              return new Response(body, { status: 503 });
+            }
+            case "?network-error": {
+              return Response.error();
+            }
+            case "?latin1": {
+              return new Response("x", {
+                status: 403,
+                statusText: "Accès refusé",
+                headers: { "www-authenticate": 'Bearer realm="Zürich"' },
+              });
+            }
+            case "?status-text-crlf": {
+              // Some Response implementations validate `statusText` lazily or
+              // not at all (e.g. srvx's `FastResponse`).
+              const res = new Response("x", { status: 401 });
+              Object.defineProperty(res, "statusText", {
+                value: "Unauthorized\r\nset-cookie: session=attacker",
+              });
+              return res;
+            }
+            case "?throw": {
+              throw new Error("hook failed");
+            }
+          }
+        },
+      }),
+    });
+    server = createServer((_req, res) => res.end("ok"));
+    server.on("upgrade", ws.handleUpgrade);
+    port = await getRandomPort("localhost");
+    await new Promise<void>((resolve) => server.listen(port, resolve));
+    await waitForPort(port);
+  });
+
+  beforeEach(() => {
+    unhandled = [];
+    consoleError.mockClear();
+  });
+
+  afterEach(async () => {
+    // Give stray socket errors a chance to surface.
+    await sleep(50);
+    expect(unhandled).toEqual([]);
+  });
+
+  afterAll(async () => {
+    process.off("uncaughtException", onUnhandled);
+    process.off("unhandledRejection", onUnhandled);
+    consoleSpy.mockRestore();
+    await ws.close();
+    server.close();
+  });
+
+  test("survives a client reset during an async hook", async () => {
+    const socket = openUpgrade(port, "/?slow");
+    socket.on("error", () => {});
+    await new Promise((resolve) => socket.once("connect", resolve));
+    await sleep(20);
+    socket.resetAndDestroy();
+    await sleep(150);
+  });
+
+  // The rejection is then written to a closed socket (EPIPE).
+  test("survives a client that disconnects during an async hook", async () => {
+    const socket = openUpgrade(port, "/?slow");
+    socket.on("error", () => {});
+    await new Promise((resolve) => socket.once("connect", resolve));
+    await sleep(20);
+    socket.destroy();
+    await sleep(150);
+  });
+
+  test("closes the socket when the body errors", async () => {
+    const res = parseHead(await rawUpgrade(port, "/?body-error"));
+    expect(res.status).toBe("HTTP/1.1 401 ");
+    expect(res.body).toBe("partial");
+    expect(consoleError).toHaveBeenCalledWith(
+      "[crossws] [node] Failed to write upgrade rejection body:",
+      expect.objectContaining({ message: "upstream cut off" }),
+    );
+  });
+
+  test("reads the body only as fast as the client does, and cancels it when the client leaves", async () => {
+    const socket = openUpgrade(port, "/?endless");
+    socket.on("error", () => {});
+    socket.pause();
+    await sleep(300);
+    // A few MB fit in the kernel socket buffers; the rest must wait.
+    expect(endless.pulls).toBeGreaterThan(0);
+    expect(endless.pulls).toBeLessThan(500);
+    socket.destroy();
+    for (let i = 0; i < 20 && !endless.cancelled; i++) {
+      await sleep(25);
+    }
+    expect(endless.cancelled).toBe(true);
+  });
+
+  test("sends `Response.error()` as a 500", async () => {
+    const res = parseHead(await rawUpgrade(port, "/?network-error"));
+    expect(res.status).toBe("HTTP/1.1 500 ");
+  });
+
+  test("writes the status text and headers as latin1", async () => {
+    const res = parseHead(await rawUpgrade(port, "/?latin1"));
+    expect(res.status).toBe("HTTP/1.1 403 Accès refusé");
+    expect(res.get("www-authenticate")).toEqual(['Bearer realm="Zürich"']);
+  });
+
+  test("never lets the status text split the response", async () => {
+    const res = parseHead(await rawUpgrade(port, "/?status-text-crlf"));
+    expect(res.status).toBe("HTTP/1.1 401 Unauthorizedset-cookie: session=attacker");
+    expect(res.headers).not.toContain("set-cookie");
+  });
+
+  test("logs a failed hook and responds with a 500", async () => {
+    const res = parseHead(await rawUpgrade(port, "/?throw"));
+    expect(res.status).toBe("HTTP/1.1 500 ");
+    expect(res.body).toBe("Internal Server Error");
+    expect(consoleError).toHaveBeenCalledWith(
+      "[crossws] [node] `upgrade` hook failed:",
+      expect.objectContaining({ message: "hook failed" }),
+    );
   });
 });
 

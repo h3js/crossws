@@ -8,6 +8,7 @@ import { Peer, type PeerContext } from "../peer.ts";
 import type { SyncDriver } from "../sync.ts";
 
 import type { IncomingMessage } from "node:http";
+import type { Socket } from "node:net";
 import type { Duplex } from "node:stream";
 import { WebSocketServer as _WebSocketServer } from "ws";
 import type { ServerOptions, WebSocketServer, WebSocket as WebSocketT } from "../../types/ws";
@@ -227,16 +228,29 @@ export const _nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) =>
       await baseUtils.close(code, reason);
     },
     handleUpgrade: async (nodeReq, socket, head, webRequest) => {
+      // Node removes its own `error` listener before emitting `upgrade`, and
+      // `ws` only adds one once the handshake is handed to it. Until then, a
+      // client reset (e.g. during an async `upgrade` hook, or while writing a
+      // rejection) would be an unhandled `error` event and crash the process.
+      socket.on("error", () => socket.destroy());
+
       const request = webRequest || new NodeReqProxy(nodeReq);
 
       let upgraded: Awaited<ReturnType<typeof hooks.upgrade>>;
       try {
         upgraded = await hooks.upgrade(request);
-      } catch {
+      } catch (error) {
         // `handleUpgrade` is invoked fire-and-forget from the server's
         // `upgrade` listener, so a rejected `upgrade()` (e.g. the default
         // resolver's app `fetch` throwing) would otherwise hang the socket and
         // raise an unhandled rejection. Fail the handshake with a 500 instead.
+        console.error("[crossws] [node] `upgrade` hook failed:", error);
+        // A hook may have taken over the socket before throwing (e.g. a
+        // `fromNodeUpgradeHandler` handler that completed the handshake), so
+        // never write a response into a stream that is no longer ours.
+        if (socket.destroyed || (socket as Socket).bytesWritten > 0) {
+          return;
+        }
         return sendResponse(socket, new Response("Internal Server Error", { status: 500 }));
       }
       const { upgradeHeaders, endResponse, handled, context, namespace, perMessageDeflate } =
@@ -398,7 +412,67 @@ class NodeReqProxy extends StubRequest {
   }
 }
 
-async function sendResponse(socket: Duplex, res: Response) {
+// Node's HTTP server timeouts no longer apply once a request is handed to the
+// `upgrade` listener, so bound how long a client that stops reading can hold a
+// rejection's socket.
+const REJECTION_IDLE_TIMEOUT = 30_000;
+
+// Writes `res` to the raw upgrade socket and closes it. Never rejects: callers
+// invoke `handleUpgrade` fire-and-forget, so errors are logged and the socket
+// is destroyed instead.
+async function sendResponse(socket: Duplex, res: Response): Promise<void> {
+  let encoded: ReturnType<typeof encodeResponse>;
+  try {
+    encoded = encodeResponse(res);
+  } catch (error) {
+    console.error("[crossws] [node] Invalid upgrade rejection response:", error);
+    encoded = encodeResponse(new Response("Internal Server Error", { status: 500 }));
+  }
+  const { head, body } = encoded;
+
+  (socket as Socket).setTimeout?.(REJECTION_IDLE_TIMEOUT, () => socket.destroy());
+  // Header values and the reason phrase are ByteStrings (latin1), as written by
+  // Node's own `ServerResponse`.
+  socket.write(head, "latin1");
+
+  if (body) {
+    const reader = body.getReader();
+    try {
+      while (!socket.destroyed) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+        if (!socket.write(value)) {
+          await drained(socket);
+        }
+      }
+    } catch (error) {
+      // e.g. an upstream body cut off mid-stream. The head is already sent, so
+      // all the client can be told is that the connection dropped.
+      console.error("[crossws] [node] Failed to write upgrade rejection body:", error);
+      socket.destroy();
+    } finally {
+      // Stops the source if the client went away before the body was read.
+      reader.cancel().catch(() => {});
+    }
+  }
+
+  if (socket.destroyed) {
+    return;
+  }
+  return new Promise<void>((resolve) => {
+    socket.end(() => {
+      socket.destroy();
+      resolve();
+    });
+  });
+}
+
+function encodeResponse(res: Response) {
+  // Read `body` first: srvx's `FastResponse` validates its init lazily here,
+  // so an invalid response throws before anything is written.
+  const body = res.body;
   // The socket is closed after the response, so the body is close-delimited:
   // drop framing/keep-alive headers and mark the connection as closing, while
   // keeping any other `connection` tokens (e.g. `upgrade` alongside `Upgrade`).
@@ -410,20 +484,26 @@ async function sendResponse(socket: Duplex, res: Response) {
     .map((token) => token.trim().toLowerCase())
     .filter((token) => token && token !== "close" && token !== "keep-alive");
   headers.set("connection", [...tokens, "close"].join(", "));
+  // `Response.error()` has status 0: a failed response, not a 200.
+  const status = res.status || 500;
+  // Only HTAB, SP, VCHAR and obs-text are allowed in a reason phrase; never let
+  // a CR/LF split the response.
+  const statusText = (res.statusText || "").replace(/[^\t\x20-\x7E\x80-\xFF]/g, "");
   const head = [
-    `HTTP/1.1 ${res.status || 200} ${res.statusText || ""}`,
+    `HTTP/1.1 ${status} ${statusText}`,
     ...[...headers].map(([key, value]) => `${key}: ${value}`),
   ];
-  socket.write(head.join("\r\n") + "\r\n\r\n");
-  if (res.body) {
-    for await (const chunk of res.body) {
-      socket.write(chunk);
-    }
-  }
+  return { head: head.join("\r\n") + "\r\n\r\n", body };
+}
+
+function drained(socket: Duplex) {
   return new Promise<void>((resolve) => {
-    socket.end(() => {
-      socket.destroy();
+    const done = () => {
+      socket.off("drain", done);
+      socket.off("close", done);
       resolve();
-    });
+    };
+    socket.on("drain", done);
+    socket.on("close", done);
   });
 }
