@@ -132,9 +132,9 @@ const uwsAdapter: Adapter<UWSAdapter, UWSOptions> = (options = {}) => {
           // uWS frames the response itself (`content-length` on `end(body)`)
           // and keeps the connection alive, so app framing headers would
           // conflict with it and are dropped.
+          const { response, reader } = lockRejection(endResponse);
           const chunks: Uint8Array[] = [];
-          if (endResponse.body) {
-            const reader = endResponse.body.getReader();
+          if (reader) {
             // Stop reading (e.g. a never-ending stream) once the client is gone.
             onAborted = () => reader.cancel().catch(() => {});
             try {
@@ -161,11 +161,11 @@ const uwsAdapter: Adapter<UWSAdapter, UWSOptions> = (options = {}) => {
           const body = Buffer.concat(chunks);
           // `Response.error()` has status 0: a failed response, not a 200. Only
           // HTAB, SP, VCHAR and obs-text are allowed in a reason phrase.
-          const status = endResponse.status || 500;
-          const statusText = endResponse.statusText.replace(/[^\t\x20-\x7E\x80-\xFF]/g, "");
+          const status = response.status || 500;
+          const statusText = response.statusText.replace(/[^\t\x20-\x7E\x80-\xFF]/g, "");
           res.cork(() => {
             res.writeStatus(`${status} ${statusText}`);
-            for (const [key, value] of endResponse.headers) {
+            for (const [key, value] of response.headers) {
               if (key === "content-length" || key === "transfer-encoding") {
                 continue;
               }
@@ -216,6 +216,19 @@ const uwsAdapter: Adapter<UWSAdapter, UWSOptions> = (options = {}) => {
 };
 
 export default uwsAdapter;
+
+// Locks the rejection body up front, so a response that can't be read (an
+// already read or locked body, or srvx's `FastResponse` validating its init
+// lazily) falls back to a 500 instead of rejecting the un-awaited handler.
+function lockRejection(res: Response) {
+  try {
+    return { response: res, reader: res.body?.getReader() };
+  } catch (error) {
+    console.error("[crossws] [uws] Invalid upgrade rejection response:", error);
+    const response = new Response("Internal Server Error", { status: 500 });
+    return { response, reader: response.body?.getReader() };
+  }
+}
 
 // --- peer ---
 

@@ -291,6 +291,11 @@ describe("node (upgrade rejection robustness)", () => {
             case "?throw": {
               throw new Error("hook failed");
             }
+            case "?locked-body": {
+              const res = new Response("already read", { status: 401 });
+              res.body!.getReader();
+              return res;
+            }
           }
         },
       }),
@@ -382,6 +387,16 @@ describe("node (upgrade rejection robustness)", () => {
   test("sends `Response.error()` as a 500", async () => {
     const res = parseHead(await rawUpgrade(port, "/?network-error"));
     expect(res.status).toBe("HTTP/1.1 500 ");
+  });
+
+  test("responds with a 500 when the body can't be read", async () => {
+    const res = parseHead(await rawUpgrade(port, "/?locked-body"));
+    expect(res.status).toBe("HTTP/1.1 500 ");
+    expect(res.body).toBe("Internal Server Error");
+    expect(consoleError).toHaveBeenCalledWith(
+      "[crossws] [node] Invalid upgrade rejection response:",
+      expect.any(TypeError),
+    );
   });
 
   test("writes the status text and headers as latin1", async () => {

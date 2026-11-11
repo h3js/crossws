@@ -428,15 +428,14 @@ async function sendResponse(socket: Duplex, res: Response): Promise<void> {
     console.error("[crossws] [node] Invalid upgrade rejection response:", error);
     encoded = encodeResponse(new Response("Internal Server Error", { status: 500 }));
   }
-  const { head, body } = encoded;
+  const { head, reader } = encoded;
 
   (socket as Socket).setTimeout?.(REJECTION_IDLE_TIMEOUT, () => socket.destroy());
   // Header values and the reason phrase are ByteStrings (latin1), as written by
   // Node's own `ServerResponse`.
   socket.write(head, "latin1");
 
-  if (body) {
-    const reader = body.getReader();
+  if (reader) {
     // Cancelling settles a pending `read()`, so the source is stopped even when
     // the socket closes (client reset, idle timeout) while waiting on a slow or
     // stalled body.
@@ -476,9 +475,10 @@ async function sendResponse(socket: Duplex, res: Response): Promise<void> {
 }
 
 function encodeResponse(res: Response) {
-  // Read `body` first: srvx's `FastResponse` validates its init lazily here,
-  // so an invalid response throws before anything is written.
-  const body = res.body;
+  // Lock `body` first, so an invalid response throws before anything is
+  // written: srvx's `FastResponse` validates its init lazily here, and an
+  // already read or locked body can't be read again.
+  const reader = res.body?.getReader();
   // The socket is closed after the response, so the body is close-delimited:
   // drop framing/keep-alive headers and mark the connection as closing, while
   // keeping any other `connection` tokens (e.g. `upgrade` alongside `Upgrade`).
@@ -499,7 +499,7 @@ function encodeResponse(res: Response) {
     `HTTP/1.1 ${status} ${statusText}`,
     ...[...headers].map(([key, value]) => `${key}: ${value}`),
   ];
-  return { head: head.join("\r\n") + "\r\n\r\n", body };
+  return { head: head.join("\r\n") + "\r\n\r\n", reader };
 }
 
 function drained(socket: Duplex) {

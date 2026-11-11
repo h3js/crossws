@@ -269,6 +269,11 @@ describe("uws (upgrade rejection robustness)", () => {
             case "?throw": {
               throw new Error("hook failed");
             }
+            case "?locked-body": {
+              const res = new Response("already read", { status: 401 });
+              res.body!.getReader();
+              return res;
+            }
           }
         },
       }),
@@ -344,6 +349,16 @@ describe("uws (upgrade rejection robustness)", () => {
   test("sends `Response.error()` as a 500", async () => {
     const res = await upgradeRequest("?network-error");
     expect(res.status).toBe(500);
+  });
+
+  test("responds with a 500 when the body can't be read", async () => {
+    const res = await upgradeRequest("?locked-body");
+    expect(res.status).toBe(500);
+    expect(res.body).toBe("Internal Server Error");
+    expect(consoleError).toHaveBeenCalledWith(
+      "[crossws] [uws] Invalid upgrade rejection response:",
+      expect.any(TypeError),
+    );
   });
 
   test("never lets the status text split the response", async () => {
