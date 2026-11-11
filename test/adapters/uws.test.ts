@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test, vi } from "vitest";
 import { request, type IncomingMessage } from "node:http";
 import { connect } from "node:net";
 import { getRandomPort, waitForPort } from "get-port-please";
@@ -223,6 +223,134 @@ describe("uws (upgrade rejection response)", () => {
     socket.on("error", () => {});
     await new Promise((resolve) => socket.on("close", resolve));
     expect(data).toBe("");
+  });
+});
+
+// uWS doesn't await the `upgrade` handler, so a failing hook or rejection body
+// must not surface as an unhandled rejection, and an invalid status must not
+// reach the wire.
+describe("uws (upgrade rejection robustness)", () => {
+  let port: number;
+  let close: () => void;
+  let unhandled: unknown[] = [];
+  const onUnhandled = (error: unknown) => unhandled.push(error);
+  const consoleError = vi.fn();
+  let consoleSpy: { mockRestore: () => void };
+
+  beforeAll(async () => {
+    process.on("uncaughtException", onUnhandled);
+    process.on("unhandledRejection", onUnhandled);
+    consoleSpy = vi.spyOn(console, "error").mockImplementation(consoleError);
+    const ws = uwsAdapter({
+      hooks: defineHooks({
+        upgrade(req) {
+          switch (new URL(req.url).search) {
+            case "?body-error": {
+              const body = new ReadableStream({
+                start(controller) {
+                  controller.enqueue(new TextEncoder().encode("partial"));
+                  setTimeout(() => controller.error(new Error("upstream cut off")), 10);
+                },
+              });
+              return new Response(body, { status: 401 });
+            }
+            case "?network-error": {
+              return Response.error();
+            }
+            case "?status-text-crlf": {
+              // Some Response implementations validate `statusText` lazily or
+              // not at all (e.g. srvx's `FastResponse`).
+              const res = new Response("x", { status: 401 });
+              Object.defineProperty(res, "statusText", {
+                value: "Unauthorized\r\nset-cookie: session=attacker",
+              });
+              return res;
+            }
+            case "?throw": {
+              throw new Error("hook failed");
+            }
+          }
+        },
+      }),
+    });
+    const app = App().ws("/*", ws.websocket);
+    port = await getRandomPort("localhost");
+    const token = await new Promise<us_listen_socket>((resolve, reject) => {
+      app.listen(port, (listenSocket) =>
+        listenSocket ? resolve(listenSocket) : reject(new Error("uWS listen failed")),
+      );
+    });
+    await waitForPort(port);
+    close = () => us_listen_socket_close(token);
+  });
+
+  beforeEach(() => {
+    unhandled = [];
+    consoleError.mockClear();
+  });
+
+  afterEach(async () => {
+    // Give stray rejections a chance to surface.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(unhandled).toEqual([]);
+  });
+
+  afterAll(() => {
+    process.off("uncaughtException", onUnhandled);
+    process.off("unhandledRejection", onUnhandled);
+    consoleSpy.mockRestore();
+    close();
+  });
+
+  const upgradeRequest = async (query: string) => {
+    const res = await new Promise<IncomingMessage>((resolve, reject) => {
+      const req = request(`http://localhost:${port}/${query}`, {
+        agent: false,
+        headers: {
+          connection: "Upgrade",
+          upgrade: "websocket",
+          "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+          "sec-websocket-version": "13",
+        },
+      });
+      req.on("response", resolve);
+      req.on("error", reject);
+      req.end();
+    });
+    let body = "";
+    for await (const chunk of res) body += chunk;
+    return { status: res.statusCode, statusText: res.statusMessage, headers: res.headers, body };
+  };
+
+  test("logs a failed hook and responds with a 500", async () => {
+    const res = await upgradeRequest("?throw");
+    expect(res.status).toBe(500);
+    expect(res.body).toBe("Internal Server Error");
+    expect(consoleError).toHaveBeenCalledWith(
+      "[crossws] [uws] `upgrade` hook failed:",
+      expect.objectContaining({ message: "hook failed" }),
+    );
+  });
+
+  test("logs a rejection body that fails", async () => {
+    // The connection is closed (covered above); the error must not be lost.
+    await expect(upgradeRequest("?body-error")).rejects.toThrow();
+    expect(consoleError).toHaveBeenCalledWith(
+      "[crossws] [uws] Failed to read upgrade rejection body:",
+      expect.objectContaining({ message: "upstream cut off" }),
+    );
+  });
+
+  test("sends `Response.error()` as a 500", async () => {
+    const res = await upgradeRequest("?network-error");
+    expect(res.status).toBe(500);
+  });
+
+  test("never lets the status text split the response", async () => {
+    const res = await upgradeRequest("?status-text-crlf");
+    expect(res.status).toBe(401);
+    expect(res.statusText).toBe("Unauthorizedset-cookie: session=attacker");
+    expect(res.headers["set-cookie"]).toBeUndefined();
   });
 });
 
