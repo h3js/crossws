@@ -102,8 +102,10 @@ const uwsAdapter: Adapter<UWSAdapter, UWSOptions> = (options = {}) => {
       },
       async upgrade(res, req, uwsContext) {
         let aborted = false;
+        let onAborted: (() => void) | undefined;
         res.onAborted(() => {
           aborted = true;
+          onAborted?.();
         });
 
         const webReq = new UWSReqProxy(req);
@@ -114,19 +116,45 @@ const uwsAdapter: Adapter<UWSAdapter, UWSOptions> = (options = {}) => {
 
         const { upgradeHeaders, endResponse, context, namespace } = await hooks.upgrade(webReq);
         if (endResponse) {
-          res.writeStatus(`${endResponse.status} ${endResponse.statusText}`);
-          for (const [key, value] of endResponse.headers) {
-            res.writeHeader(key, value);
-          }
+          // uWS frames the response itself (`content-length` on `end(body)`)
+          // and keeps the connection alive, so app framing headers would
+          // conflict with it and are dropped.
+          const chunks: Uint8Array[] = [];
           if (endResponse.body) {
-            for await (const chunk of endResponse.body) {
-              if (aborted) break;
-              res.write(chunk);
+            const reader = endResponse.body.getReader();
+            // Stop reading (e.g. a never-ending stream) once the client is gone.
+            onAborted = () => reader.cancel().catch(() => {});
+            try {
+              while (!aborted) {
+                const { done, value } = await reader.read();
+                if (done) {
+                  break;
+                }
+                chunks.push(value);
+              }
+            } catch {
+              // The body failed mid-stream (e.g. an upstream cut off), so there
+              // is nothing complete to send.
+              if (!aborted) {
+                res.close();
+              }
+              return;
             }
           }
-          if (!aborted) {
-            res.end();
+          if (aborted) {
+            return;
           }
+          const body = Buffer.concat(chunks);
+          res.cork(() => {
+            res.writeStatus(`${endResponse.status} ${endResponse.statusText}`);
+            for (const [key, value] of endResponse.headers) {
+              if (key === "content-length" || key === "transfer-encoding") {
+                continue;
+              }
+              res.writeHeader(key, value);
+            }
+            res.end(body);
+          });
           return;
         }
 

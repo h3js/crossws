@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
+import { request, type IncomingMessage } from "node:http";
+import { connect } from "node:net";
 import { getRandomPort, waitForPort } from "get-port-please";
 import {
   App,
@@ -69,6 +71,159 @@ describe("uws", () => {
   });
 
   pingPongTests(() => url);
+});
+
+// uWS frames upgrade rejection responses itself and keeps the connection
+// alive, so app framing headers must not be forwarded: `content-length` used
+// to go out alongside uWS's `Transfer-Encoding: chunked`, which HTTP clients
+// refuse to parse.
+describe("uws (upgrade rejection response)", () => {
+  let port: number;
+  let close: () => void;
+  let onStreamCancel: () => void;
+  const streamCancelled = new Promise<void>((resolve) => (onStreamCancel = resolve));
+
+  beforeAll(async () => {
+    const ws = uwsAdapter({
+      hooks: defineHooks({
+        upgrade(req) {
+          const query = new URL(req.url).search;
+          if (query === "?stream") {
+            // A body that never ends.
+            const stream = new ReadableStream({
+              start(controller) {
+                controller.enqueue(new TextEncoder().encode("unauthorized"));
+              },
+              cancel: () => onStreamCancel(),
+            });
+            return new Response(stream, { status: 401 });
+          }
+          if (query === "?broken") {
+            const stream = new ReadableStream({
+              pull(controller) {
+                controller.error(new Error("upstream cut off"));
+              },
+            });
+            return new Response(stream, { status: 401 });
+          }
+          return new Response("unauthorized", {
+            status: 401,
+            headers:
+              query === "?chunked"
+                ? { "transfer-encoding": "chunked", "x-error": "unauthorized" }
+                : { "content-length": "12", "x-error": "unauthorized" },
+          });
+        },
+      }),
+    });
+    const app = App()
+      .ws("/*", ws.websocket)
+      .get("/*", (res) => {
+        res.end("ok");
+      });
+    port = await getRandomPort("localhost");
+    const token = await new Promise<us_listen_socket>((resolve, reject) => {
+      app.listen(port, (listenSocket) =>
+        listenSocket ? resolve(listenSocket) : reject(new Error("uWS listen failed")),
+      );
+    });
+    await waitForPort(port);
+    close = () => us_listen_socket_close(token);
+  });
+
+  afterAll(() => close());
+
+  const upgradeHeaders = {
+    connection: "Upgrade",
+    upgrade: "websocket",
+    "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+    "sec-websocket-version": "13",
+  };
+
+  test.each(["?content-length", "?chunked"])("parses with node:http (%s)", async (query) => {
+    const res = await new Promise<IncomingMessage>((resolve, reject) => {
+      const req = request(`http://localhost:${port}/${query}`, {
+        agent: false,
+        headers: upgradeHeaders,
+      });
+      req.on("response", resolve);
+      req.on("error", reject);
+      req.end();
+    });
+    let body = "";
+    for await (const chunk of res) body += chunk;
+    expect(res.statusCode).toBe(401);
+    expect(res.headers["x-error"]).toBe("unauthorized");
+    expect(res.headers["content-length"]).toBe("12");
+    expect(res.headers["transfer-encoding"]).toBeUndefined();
+    expect(body).toBe("unauthorized");
+  });
+
+  test("uses a single framing header and keeps the connection usable", async () => {
+    // Pipeline a plain request after the rejected upgrade on the same socket.
+    const raw = await new Promise<string>((resolve, reject) => {
+      const socket = connect(port, "localhost", () => {
+        socket.write(
+          [
+            `GET /?content-length HTTP/1.1`,
+            `host: localhost:${port}`,
+            ...Object.entries(upgradeHeaders).map(([key, value]) => `${key}: ${value}`),
+            "",
+            `GET /next HTTP/1.1`,
+            `host: localhost:${port}`,
+          ].join("\r\n") + "\r\n\r\n",
+        );
+      });
+      let data = "";
+      socket.setEncoding("latin1");
+      socket.on("data", (chunk) => {
+        data += chunk;
+        if (data.endsWith("\r\n\r\nok")) {
+          socket.destroy();
+          resolve(data);
+        }
+      });
+      socket.on("error", reject);
+    });
+    const [head, rest] = raw.split("\r\n\r\n");
+    const lines = head!.toLowerCase().split("\r\n");
+    expect(lines[0]).toBe("http/1.1 401 ");
+    expect(lines.filter((line) => line.startsWith("content-length:"))).toEqual([
+      "content-length: 12",
+    ]);
+    expect(lines.some((line) => line.startsWith("transfer-encoding:"))).toBe(false);
+    expect(rest).toMatch(/^unauthorizedHTTP\/1\.1 200 OK\r\n/);
+  });
+
+  const sendRawUpgrade = (query: string) => {
+    const socket = connect(port, "localhost", () => {
+      socket.write(
+        [
+          `GET /${query} HTTP/1.1`,
+          `host: localhost:${port}`,
+          ...Object.entries(upgradeHeaders).map(([key, value]) => `${key}: ${value}`),
+        ].join("\r\n") + "\r\n\r\n",
+      );
+    });
+    return socket;
+  };
+
+  test("stops reading the body when the client aborts", async () => {
+    const socket = sendRawUpgrade("?stream");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    socket.destroy();
+    await streamCancelled;
+  });
+
+  test("closes the connection when the body errors", async () => {
+    const socket = sendRawUpgrade("?broken");
+    let data = "";
+    socket.setEncoding("latin1");
+    socket.on("data", (chunk) => (data += chunk));
+    socket.on("error", () => {});
+    await new Promise((resolve) => socket.on("close", resolve));
+    expect(data).toBe("");
+  });
 });
 
 // Regression: a global `adapter.publish(topic, data)` (no namespace) on a
