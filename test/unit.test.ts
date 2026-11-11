@@ -134,8 +134,10 @@ test("failed rejection response write destroys the socket without an unhandled r
     await new Promise((r) => client.once("close", r));
     await new Promise((r) => setTimeout(r, 50));
     expect(unhandled).not.toHaveBeenCalled();
+    // The node adapter handles a failing body itself, so it never reaches the
+    // server's `handleUpgrade` catch.
     expect(consoleError).toHaveBeenCalledWith(
-      "[crossws] WebSocket upgrade failed:",
+      "[crossws] [node] Failed to write upgrade rejection body:",
       expect.objectContaining({ message: "body failed" }),
     );
     await server.close(true);
