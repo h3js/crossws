@@ -17,7 +17,7 @@ import type { HeadersInit } from "../../types/web.ts";
 // --- types ---
 
 type AugmentedReq = IncomingMessage & {
-  _request: Request;
+  _request?: Request;
   _upgradeHeaders?: HeadersInit;
   _context: PeerContext;
   _namespace: string;
@@ -105,7 +105,10 @@ export const _nodeAdapter: Adapter<NodeAdapter, NodeOptions> = (options = {}) =>
   const sweepMs = Math.max(1, Math.floor(idleTimeoutMs));
 
   wss.on("connection", (ws, nodeReq: AugmentedReq) => {
-    const request = new NodeReqProxy(nodeReq);
+    // Reuse the exact request the `upgrade` hook authorized (e.g. srvx's
+    // `NodeRequest`), so `peer.request` keeps its URL and any app state. Fall
+    // back to a proxy for sockets crossws didn't upgrade (shared `wss`).
+    const request = nodeReq._request || new NodeReqProxy(nodeReq);
     const peers = getPeers(globalPeers, nodeReq._namespace);
     const peer = new NodePeer({
       ws,

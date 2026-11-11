@@ -359,6 +359,52 @@ describe("node (publish object frame type)", () => {
   });
 });
 
+// `peer.request` must be the request the `upgrade` hook authorized (e.g. srvx's
+// `NodeRequest` passed as `webRequest`), not a fresh proxy rebuilt from the raw
+// `Host`/`req.url`, which would drop its URL semantics and any attached state.
+describe("node (peer.request reuses the upgrade request)", () => {
+  let server: Server;
+  let url: string;
+  let ws: ReturnType<typeof nodeAdapter>;
+  const seen: { upgrade?: Request; open?: Request } = {};
+
+  beforeAll(async () => {
+    ws = nodeAdapter({
+      hooks: defineHooks({
+        upgrade(req) {
+          seen.upgrade = req;
+        },
+        open(peer) {
+          seen.open = peer.request;
+        },
+      }),
+    });
+    server = createServer((_req, res) => res.end("ok"));
+    server.on("upgrade", (req, socket, head) => {
+      const webRequest = new Request(`https://app.example.com${req.url}`, {
+        headers: req.headers as Record<string, string>,
+      });
+      ws.handleUpgrade(req, socket, head, webRequest);
+    });
+    const port = await getRandomPort("localhost");
+    url = `ws://localhost:${port}/room?x=1`;
+    await new Promise<void>((resolve) => server.listen(port, resolve));
+    await waitForPort(port);
+  });
+
+  afterAll(() => {
+    ws.closeAll();
+    server.close();
+  });
+
+  test("open hook sees the same request object as the upgrade hook", async () => {
+    await wsConnect(url);
+    await expect.poll(() => seen.open).toBeDefined();
+    expect(seen.open).toBe(seen.upgrade);
+    expect(seen.open!.url).toBe("https://app.example.com/room?x=1");
+  });
+});
+
 // `permessage-deflate` is negotiated from `ws`'s server-wide options, so a
 // per-connection `perMessageDeflate` returned by the `upgrade` hook overrides
 // that option for the handshake only. The `ws` client offers the extension by
