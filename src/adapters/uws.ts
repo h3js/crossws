@@ -114,19 +114,23 @@ const uwsAdapter: Adapter<UWSAdapter, UWSOptions> = (options = {}) => {
 
         const { upgradeHeaders, endResponse, context, namespace } = await hooks.upgrade(webReq);
         if (endResponse) {
-          res.writeStatus(`${endResponse.status} ${endResponse.statusText}`);
-          for (const [key, value] of endResponse.headers) {
-            res.writeHeader(key, value);
+          // uWS frames the response itself (`content-length` on `end(body)`)
+          // and keeps the connection alive, so app framing headers would
+          // conflict with it and are dropped.
+          const body = await endResponse.arrayBuffer();
+          if (aborted) {
+            return;
           }
-          if (endResponse.body) {
-            for await (const chunk of endResponse.body) {
-              if (aborted) break;
-              res.write(chunk);
+          res.cork(() => {
+            res.writeStatus(`${endResponse.status} ${endResponse.statusText}`);
+            for (const [key, value] of endResponse.headers) {
+              if (key === "content-length" || key === "transfer-encoding") {
+                continue;
+              }
+              res.writeHeader(key, value);
             }
-          }
-          if (!aborted) {
-            res.end();
-          }
+            res.end(body);
+          });
           return;
         }
 
