@@ -1,6 +1,6 @@
 import { once } from "node:events";
 import { getRandomPort } from "get-port-please";
-import { afterEach, beforeEach, expect, test } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { WebSocketServer } from "ws";
 import WebSocket from "ws";
 import { fromNodeUpgradeHandler } from "../src/node-handler.ts";
@@ -112,4 +112,51 @@ test("fromNodeUpgradeHandler does not invoke node adapter's own handleUpgrade", 
   expect(upstreamOpens).toBe(1);
   client.close();
   await once(client, "close");
+});
+
+test("fromNodeUpgradeHandler throwing after the handshake leaves the WebSocket intact", async () => {
+  // A handler that completes the handshake and then fails (e.g. an audit step)
+  // must not get an HTTP 500 written into the live WebSocket stream.
+  const wss = new WebSocketServer({ noServer: true });
+  currentWss = wss;
+  wss.on("connection", (ws) => ws.on("message", (data) => ws.send(`echo:${data}`)));
+  const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+
+  const port = await getRandomPort("localhost");
+  const server = serve({
+    port,
+    hostname: "127.0.0.1",
+    fetch: () => new Response("ok"),
+    websocket: fromNodeUpgradeHandler(async (req, socket, head) => {
+      await new Promise<void>((resolve) =>
+        wss.handleUpgrade(req, socket, head, (ws) => {
+          wss.emit("connection", ws, req);
+          resolve();
+        }),
+      );
+      throw new Error("audit failed");
+    }),
+  });
+  currentServer = server;
+  await server.ready();
+
+  try {
+    const client = new WebSocket(`ws://127.0.0.1:${port}/`);
+    const errors: Error[] = [];
+    client.on("error", (error) => errors.push(error));
+    await once(client, "open");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    client.send("hello");
+    const [reply] = await once(client, "message");
+    expect(reply.toString()).toBe("echo:hello");
+    expect(errors).toEqual([]);
+    expect(consoleError).toHaveBeenCalledWith(
+      "[crossws] [node] `upgrade` hook failed:",
+      expect.objectContaining({ message: "audit failed" }),
+    );
+    client.close();
+    await once(client, "close");
+  } finally {
+    consoleError.mockRestore();
+  }
 });
