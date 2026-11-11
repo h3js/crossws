@@ -80,12 +80,32 @@ describe("uws", () => {
 describe("uws (upgrade rejection response)", () => {
   let port: number;
   let close: () => void;
+  let onStreamCancel: () => void;
+  const streamCancelled = new Promise<void>((resolve) => (onStreamCancel = resolve));
 
   beforeAll(async () => {
     const ws = uwsAdapter({
       hooks: defineHooks({
         upgrade(req) {
           const query = new URL(req.url).search;
+          if (query === "?stream") {
+            // A body that never ends.
+            const stream = new ReadableStream({
+              start(controller) {
+                controller.enqueue(new TextEncoder().encode("unauthorized"));
+              },
+              cancel: () => onStreamCancel(),
+            });
+            return new Response(stream, { status: 401 });
+          }
+          if (query === "?broken") {
+            const stream = new ReadableStream({
+              pull(controller) {
+                controller.error(new Error("upstream cut off"));
+              },
+            });
+            return new Response(stream, { status: 401 });
+          }
           return new Response("unauthorized", {
             status: 401,
             headers:
@@ -173,6 +193,36 @@ describe("uws (upgrade rejection response)", () => {
     ]);
     expect(lines.some((line) => line.startsWith("transfer-encoding:"))).toBe(false);
     expect(rest).toMatch(/^unauthorizedHTTP\/1\.1 200 OK\r\n/);
+  });
+
+  const sendRawUpgrade = (query: string) => {
+    const socket = connect(port, "localhost", () => {
+      socket.write(
+        [
+          `GET /${query} HTTP/1.1`,
+          `host: localhost:${port}`,
+          ...Object.entries(upgradeHeaders).map(([key, value]) => `${key}: ${value}`),
+        ].join("\r\n") + "\r\n\r\n",
+      );
+    });
+    return socket;
+  };
+
+  test("stops reading the body when the client aborts", async () => {
+    const socket = sendRawUpgrade("?stream");
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    socket.destroy();
+    await streamCancelled;
+  });
+
+  test("closes the connection when the body errors", async () => {
+    const socket = sendRawUpgrade("?broken");
+    let data = "";
+    socket.setEncoding("latin1");
+    socket.on("data", (chunk) => (data += chunk));
+    socket.on("error", () => {});
+    await new Promise((resolve) => socket.on("close", resolve));
+    expect(data).toBe("");
   });
 });
 
