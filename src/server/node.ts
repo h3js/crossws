@@ -15,15 +15,33 @@ export function plugin(wsOpts: WSOptions): ServerPlugin {
     const originalServe = server.serve;
     server.serve = () => {
       server.node?.server!.on("upgrade", (req, socket, head) => {
-        ws.handleUpgrade(
+        // Same request context srvx builds for regular requests.
+        const request = new NodeRequest({
           req,
-          socket,
-          head,
           // @ts-expect-error (upgrade is not typed)
-          new NodeRequest({ req, upgrade: { socket, head } }),
-        );
+          upgrade: { socket, head },
+          trustProxy: server.options.trustProxy,
+        });
+        request.waitUntil = server.waitUntil;
+        // Rejections from `handleUpgrade` itself (e.g. writing a rejection
+        // response); fire-and-forget hook calls are not covered here.
+        ws.handleUpgrade(req, socket, head, request).catch((error) => {
+          socket.destroy();
+          console.error("[crossws] WebSocket upgrade failed:", error);
+        });
       });
       return originalServe.call(server);
+    };
+    // `closeAllConnections()` doesn't reach upgraded sockets, so terminate the
+    // peers here. A graceful `close()` leaves them open (like Bun).
+    const originalClose = server.close;
+    server.close = async (closeActiveConnections) => {
+      const closing = originalClose.call(server, closeActiveConnections);
+      if (!closeActiveConnections) {
+        return closing;
+      }
+      ws.closeAll(undefined, undefined, true);
+      await Promise.all([ws.close(), closing]);
     };
   };
 }
