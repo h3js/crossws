@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { createServer, request, Server, type IncomingMessage } from "node:http";
+import { Agent, createServer, request, Server, type IncomingMessage } from "node:http";
+import { connect } from "node:net";
 import { WebSocket, WebSocketServer } from "ws";
 import { getRandomPort, waitForPort } from "get-port-please";
 import nodeAdapter from "../../src/adapters/node";
@@ -53,32 +54,147 @@ describe("node", () => {
 
   pingPongTests(() => url);
 
-  // The socket is closed after the response, so clients must not reuse it
-  test("upgrade fail response closes the connection", async () => {
-    const res = await new Promise<IncomingMessage>((resolve, reject) => {
-      const req = request(url.replace("ws:", "http:") + "?unauthorized", {
-        headers: {
-          connection: "Upgrade",
-          upgrade: "websocket",
-          "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
-          "sec-websocket-version": "13",
+  test("forcefully terminates when force=true", async () => {
+    // Open a peer of our own so the assertion never depends on leftovers.
+    await wsConnect(url);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    const peers = [...ws.peers.values()].flatMap((peers) => [...peers]);
+    expect(peers.length).toBeGreaterThan(0);
+    ws.closeAll(undefined, undefined, true);
+    for (const peer of peers) {
+      expect(peer.websocket.readyState).toBe(2 /* CLOSING */);
+    }
+  });
+});
+
+// The socket is destroyed after an upgrade rejection, so the response must say
+// `connection: close` or keep-alive clients pool the dead socket (#221). The
+// body is close-delimited, so framing/keep-alive headers from the app are
+// dropped, while other `connection` tokens are kept.
+describe("node (upgrade rejection response)", () => {
+  let server: Server;
+  let port: number;
+  let ws: ReturnType<typeof nodeAdapter>;
+
+  beforeAll(async () => {
+    ws = nodeAdapter({
+      hooks: defineHooks({
+        upgrade(req) {
+          const query = new URL(req.url).search;
+          if (query === "?keep-alive") {
+            return new Response("unauthorized", {
+              status: 401,
+              headers: {
+                "content-length": "12",
+                connection: "keep-alive",
+                "keep-alive": "timeout=5",
+                "transfer-encoding": "chunked",
+              },
+            });
+          }
+          if (query === "?content-length") {
+            return new Response("unauthorized", {
+              status: 401,
+              headers: { "content-length": "12" },
+            });
+          }
+          if (query === "?upgrade-required") {
+            return new Response("upgrade required", {
+              status: 426,
+              headers: { upgrade: "websocket", connection: "Upgrade" },
+            });
+          }
         },
-      });
-      req.on("response", (res) => resolve(res.resume()));
-      req.on("error", reject);
-      req.end();
+      }),
     });
-    expect(res.statusCode).toBe(401);
-    expect(res.headers.connection).toBe("close");
+    server = createServer((_req, res) => res.end("ok"));
+    server.on("upgrade", ws.handleUpgrade);
+    port = await getRandomPort("localhost");
+    await new Promise<void>((resolve) => server.listen(port, resolve));
+    await waitForPort(port);
   });
 
-  test("forcefully terminates when force=true", async () => {
-    ws.closeAll(undefined, undefined, true);
-    for (const [_ns, peers] of ws.peers) {
-      for (const peer of peers) {
-        expect(peer.websocket.readyState).toBe(2 /* CLOSING */);
-      }
+  afterAll(async () => {
+    await ws.close();
+    server.close();
+  });
+
+  // Raw bytes of the response, read until the server closes the socket.
+  const rawUpgrade = (path: string) =>
+    new Promise<string>((resolve, reject) => {
+      const socket = connect(port, "localhost", () => {
+        socket.write(
+          [
+            `GET ${path} HTTP/1.1`,
+            `host: localhost:${port}`,
+            "connection: Upgrade",
+            "upgrade: websocket",
+            "sec-websocket-key: dGhlIHNhbXBsZSBub25jZQ==",
+            "sec-websocket-version: 13",
+          ].join("\r\n") + "\r\n\r\n",
+        );
+      });
+      let data = "";
+      socket.setEncoding("latin1");
+      socket.on("data", (chunk) => (data += chunk));
+      socket.on("end", () => resolve(data));
+      socket.on("error", reject);
+    });
+
+  const parseHead = (raw: string) => {
+    const [head, body] = raw.split("\r\n\r\n");
+    const [status, ...lines] = head!.split("\r\n");
+    const headers = lines.map((line) => line.split(": ")[0]!.toLowerCase());
+    const get = (name: string) =>
+      lines
+        .filter((line) => line.toLowerCase().startsWith(`${name}:`))
+        .map((line) => line.slice(name.length + 1).trim());
+    return { status, headers, get, body };
+  };
+
+  test("replaces app keep-alive headers with `connection: close`", async () => {
+    const res = parseHead(await rawUpgrade("/?keep-alive"));
+    expect(res.status).toBe("HTTP/1.1 401 ");
+    expect(res.get("connection")).toEqual(["close"]);
+    expect(res.headers).not.toContain("keep-alive");
+    expect(res.headers).not.toContain("transfer-encoding");
+    expect(res.get("content-length")).toEqual(["12"]);
+    expect(res.body).toBe("unauthorized");
+  });
+
+  test("keeps other `connection` tokens", async () => {
+    const res = parseHead(await rawUpgrade("/?upgrade-required"));
+    expect(res.status).toBe("HTTP/1.1 426 ");
+    expect(res.get("connection")).toEqual(["upgrade, close"]);
+    expect(res.get("upgrade")).toEqual(["websocket"]);
+  });
+
+  // Before the fix the agent pooled the socket, and the next request failed
+  // on it with "socket hang up".
+  test("keep-alive agents do not reuse the socket", async () => {
+    const agent = new Agent({ keepAlive: true });
+    const sockets = new Set<unknown>();
+    for (let i = 0; i < 3; i++) {
+      const res = await new Promise<IncomingMessage>((resolve, reject) => {
+        const req = request(`http://localhost:${port}/?content-length`, {
+          agent,
+          headers: {
+            connection: "Upgrade",
+            upgrade: "websocket",
+            "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==",
+            "sec-websocket-version": "13",
+          },
+        });
+        req.on("socket", (socket) => sockets.add(socket));
+        req.on("response", (res) => res.resume().on("end", () => resolve(res)));
+        req.on("error", reject);
+        req.end();
+      });
+      expect(res.statusCode).toBe(401);
+      expect(res.headers.connection).toBe("close");
     }
+    agent.destroy();
+    expect(sockets.size).toBe(3);
   });
 });
 

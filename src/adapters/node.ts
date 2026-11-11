@@ -396,13 +396,20 @@ class NodeReqProxy extends StubRequest {
 }
 
 async function sendResponse(socket: Duplex, res: Response) {
+  // The socket is closed after the response, so the body is close-delimited:
+  // drop framing/keep-alive headers and mark the connection as closing, while
+  // keeping any other `connection` tokens (e.g. `upgrade` alongside `Upgrade`).
+  const headers = new Headers(res.headers);
+  headers.delete("transfer-encoding");
+  headers.delete("keep-alive");
+  const tokens = (headers.get("connection") || "")
+    .split(",")
+    .map((token) => token.trim().toLowerCase())
+    .filter((token) => token && token !== "close" && token !== "keep-alive");
+  headers.set("connection", [...tokens, "close"].join(", "));
   const head = [
     `HTTP/1.1 ${res.status || 200} ${res.statusText || ""}`,
-    ...[...res.headers.entries()]
-      .filter(([key]) => key !== "connection")
-      .map(([key, value]) => `${key}: ${value}`),
-    // The socket is closed after the response
-    "connection: close",
+    ...[...headers].map(([key, value]) => `${key}: ${value}`),
   ];
   socket.write(head.join("\r\n") + "\r\n\r\n");
   if (res.body) {
