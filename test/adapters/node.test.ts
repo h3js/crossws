@@ -216,6 +216,7 @@ describe("node (upgrade rejection robustness)", () => {
   const consoleError = vi.fn();
   let consoleSpy: { mockRestore: () => void };
   const endless = { pulls: 0, cancelled: false };
+  const slowBody = { pulls: 0, cancelled: false };
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
   beforeAll(async () => {
@@ -252,6 +253,21 @@ describe("node (upgrade rejection robustness)", () => {
                 },
               });
               return new Response(body, { status: 503 });
+            }
+            case "?slow-body": {
+              // e.g. a proxied upstream response that trickles in.
+              const body = new ReadableStream({
+                async pull(controller) {
+                  // Bounded, so a regression can't keep pulling forever.
+                  if (++slowBody.pulls > 20) return controller.close();
+                  await sleep(100);
+                  controller.enqueue(new TextEncoder().encode("chunk"));
+                },
+                cancel() {
+                  slowBody.cancelled = true;
+                },
+              });
+              return new Response(body, { status: 401 });
             }
             case "?network-error": {
               return Response.error();
@@ -347,6 +363,20 @@ describe("node (upgrade rejection robustness)", () => {
       await sleep(25);
     }
     expect(endless.cancelled).toBe(true);
+  });
+
+  // A reset destroys the server socket while a `read()` is pending, so the
+  // next write fails and `close` has already fired: `sendResponse` must not
+  // wait on it forever, and the source must still be cancelled.
+  test("cancels a slow body when the client resets mid-response", async () => {
+    const socket = openUpgrade(port, "/?slow-body");
+    socket.on("error", () => {});
+    await new Promise((resolve) => socket.once("data", resolve));
+    socket.resetAndDestroy();
+    for (let i = 0; i < 20 && !slowBody.cancelled; i++) {
+      await sleep(25);
+    }
+    expect(slowBody.cancelled).toBe(true);
   });
 
   test("sends `Response.error()` as a 500", async () => {

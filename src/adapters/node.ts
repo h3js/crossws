@@ -437,6 +437,11 @@ async function sendResponse(socket: Duplex, res: Response): Promise<void> {
 
   if (body) {
     const reader = body.getReader();
+    // Cancelling settles a pending `read()`, so the source is stopped even when
+    // the socket closes (client reset, idle timeout) while waiting on a slow or
+    // stalled body.
+    const onClose = () => reader.cancel().catch(() => {});
+    socket.once("close", onClose);
     try {
       while (!socket.destroyed) {
         const { done, value } = await reader.read();
@@ -453,6 +458,7 @@ async function sendResponse(socket: Duplex, res: Response): Promise<void> {
       console.error("[crossws] [node] Failed to write upgrade rejection body:", error);
       socket.destroy();
     } finally {
+      socket.off("close", onClose);
       // Stops the source if the client went away before the body was read.
       reader.cancel().catch(() => {});
     }
@@ -498,6 +504,12 @@ function encodeResponse(res: Response) {
 
 function drained(socket: Duplex) {
   return new Promise<void>((resolve) => {
+    // A write to an already destroyed socket returns `false`, but its `close`
+    // has been emitted already and would never fire again.
+    if (socket.destroyed) {
+      resolve();
+      return;
+    }
     const done = () => {
       socket.off("drain", done);
       socket.off("close", done);
