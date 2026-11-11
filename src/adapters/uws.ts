@@ -102,8 +102,10 @@ const uwsAdapter: Adapter<UWSAdapter, UWSOptions> = (options = {}) => {
       },
       async upgrade(res, req, uwsContext) {
         let aborted = false;
+        let onAborted: (() => void) | undefined;
         res.onAborted(() => {
           aborted = true;
+          onAborted?.();
         });
 
         const webReq = new UWSReqProxy(req);
@@ -112,21 +114,65 @@ const uwsAdapter: Adapter<UWSAdapter, UWSOptions> = (options = {}) => {
         // value on the upgraded WebSocket, so capture it from the response here.
         const remoteAddress = new TextDecoder().decode(res.getRemoteAddressAsText());
 
-        const { upgradeHeaders, endResponse, context, namespace } = await hooks.upgrade(webReq);
+        let upgraded: Awaited<ReturnType<typeof hooks.upgrade>>;
+        try {
+          upgraded = await hooks.upgrade(webReq);
+        } catch (error) {
+          // uWS doesn't await this handler, so a rejection here would be
+          // unhandled. Fail the handshake with a 500 instead.
+          console.error("[crossws] [uws] `upgrade` hook failed:", error);
+          upgraded = {
+            context: {},
+            namespace: "",
+            endResponse: new Response("Internal Server Error", { status: 500 }),
+          };
+        }
+        const { upgradeHeaders, endResponse, context, namespace } = upgraded;
         if (endResponse) {
-          res.writeStatus(`${endResponse.status} ${endResponse.statusText}`);
-          for (const [key, value] of endResponse.headers) {
-            res.writeHeader(key, value);
-          }
+          // uWS frames the response itself (`content-length` on `end(body)`)
+          // and keeps the connection alive, so app framing headers would
+          // conflict with it and are dropped.
+          const chunks: Uint8Array[] = [];
           if (endResponse.body) {
-            for await (const chunk of endResponse.body) {
-              if (aborted) break;
-              res.write(chunk);
+            const reader = endResponse.body.getReader();
+            // Stop reading (e.g. a never-ending stream) once the client is gone.
+            onAborted = () => reader.cancel().catch(() => {});
+            try {
+              while (!aborted) {
+                const { done, value } = await reader.read();
+                if (done) {
+                  break;
+                }
+                chunks.push(value);
+              }
+            } catch (error) {
+              // The body failed mid-stream (e.g. an upstream cut off), so there
+              // is nothing complete to send.
+              console.error("[crossws] [uws] Failed to read upgrade rejection body:", error);
+              if (!aborted) {
+                res.close();
+              }
+              return;
             }
           }
-          if (!aborted) {
-            res.end();
+          if (aborted) {
+            return;
           }
+          const body = Buffer.concat(chunks);
+          // `Response.error()` has status 0: a failed response, not a 200. Only
+          // HTAB, SP, VCHAR and obs-text are allowed in a reason phrase.
+          const status = endResponse.status || 500;
+          const statusText = endResponse.statusText.replace(/[^\t\x20-\x7E\x80-\xFF]/g, "");
+          res.cork(() => {
+            res.writeStatus(`${status} ${statusText}`);
+            for (const [key, value] of endResponse.headers) {
+              if (key === "content-length" || key === "transfer-encoding") {
+                continue;
+              }
+              res.writeHeader(key, value);
+            }
+            res.end(body);
+          });
           return;
         }
 
