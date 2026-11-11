@@ -114,7 +114,20 @@ const uwsAdapter: Adapter<UWSAdapter, UWSOptions> = (options = {}) => {
         // value on the upgraded WebSocket, so capture it from the response here.
         const remoteAddress = new TextDecoder().decode(res.getRemoteAddressAsText());
 
-        const { upgradeHeaders, endResponse, context, namespace } = await hooks.upgrade(webReq);
+        let upgraded: Awaited<ReturnType<typeof hooks.upgrade>>;
+        try {
+          upgraded = await hooks.upgrade(webReq);
+        } catch (error) {
+          // uWS doesn't await this handler, so a rejection here would be
+          // unhandled. Fail the handshake with a 500 instead.
+          console.error("[crossws] [uws] `upgrade` hook failed:", error);
+          upgraded = {
+            context: {},
+            namespace: "",
+            endResponse: new Response("Internal Server Error", { status: 500 }),
+          };
+        }
+        const { upgradeHeaders, endResponse, context, namespace } = upgraded;
         if (endResponse) {
           // uWS frames the response itself (`content-length` on `end(body)`)
           // and keeps the connection alive, so app framing headers would
@@ -132,9 +145,10 @@ const uwsAdapter: Adapter<UWSAdapter, UWSOptions> = (options = {}) => {
                 }
                 chunks.push(value);
               }
-            } catch {
+            } catch (error) {
               // The body failed mid-stream (e.g. an upstream cut off), so there
               // is nothing complete to send.
+              console.error("[crossws] [uws] Failed to read upgrade rejection body:", error);
               if (!aborted) {
                 res.close();
               }
@@ -145,8 +159,12 @@ const uwsAdapter: Adapter<UWSAdapter, UWSOptions> = (options = {}) => {
             return;
           }
           const body = Buffer.concat(chunks);
+          // `Response.error()` has status 0: a failed response, not a 200. Only
+          // HTAB, SP, VCHAR and obs-text are allowed in a reason phrase.
+          const status = endResponse.status || 500;
+          const statusText = endResponse.statusText.replace(/[^\t\x20-\x7E\x80-\xFF]/g, "");
           res.cork(() => {
-            res.writeStatus(`${endResponse.status} ${endResponse.statusText}`);
+            res.writeStatus(`${status} ${statusText}`);
             for (const [key, value] of endResponse.headers) {
               if (key === "content-length" || key === "transfer-encoding") {
                 continue;
